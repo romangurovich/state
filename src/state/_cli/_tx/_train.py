@@ -27,6 +27,7 @@ def run_tx_train(cfg: DictConfig):
     from lightning.pytorch.plugins.precision import MixedPrecision
 
     from ...tx.callbacks import BatchSpeedMonitorCallback
+    from ...tx.callbacks import ModelFLOPSUtilizationCallback
     from ...tx.utils import get_checkpoint_callbacks, get_lightning_module, get_loggers
 
     logger = logging.getLogger(__name__)
@@ -197,7 +198,17 @@ def run_tx_train(cfg: DictConfig):
     )
     # Add BatchSpeedMonitorCallback to log batches per second to wandb
     batch_speed_monitor = BatchSpeedMonitorCallback()
-    callbacks = ckpt_callbacks + [batch_speed_monitor]
+    
+    # Add ModelFLOPSUtilizationCallback to track and log MFU
+    mfu_available_flops = cfg["training"].get("theoretical_peak_flops", None)
+    mfu_use_backward = cfg["training"].get("mfu_use_backward", False)
+    mfu_cb = ModelFLOPSUtilizationCallback(
+        available_flops=mfu_available_flops,
+        use_backward=mfu_use_backward,
+        logging_interval=None,  # defaults to Trainer.log_every_n_steps
+    )
+
+    callbacks = ckpt_callbacks + [batch_speed_monitor, mfu_cb]
 
     logger.info("Loggers and callbacks set up.")
 
@@ -228,6 +239,10 @@ def run_tx_train(cfg: DictConfig):
         callbacks=callbacks,
         gradient_clip_val=cfg["training"]["gradient_clip_val"] if cfg["model"]["name"].lower() != "cpa" else None,
     )
+
+    # Align logging cadence with rolling MFU window (and W&B logging)
+    if "log_every_n_steps" in cfg["training"]:
+        trainer_kwargs["log_every_n_steps"] = cfg["training"]["log_every_n_steps"]
 
     # If it's SimpleSum, override to do exactly 1 epoch, ignoring `max_steps`.
     if cfg["model"]["name"].lower() == "celltypemean" or cfg["model"]["name"].lower() == "globalsimplesum" or cfg["model"]["name"].lower() == "perturb_mean" or cfg["model"]["name"].lower() == "context_mean":
