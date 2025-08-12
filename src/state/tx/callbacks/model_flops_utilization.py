@@ -16,7 +16,7 @@ class ModelFLOPSUtilizationCallback(Callback):
 
     - Measures FLOPs once on the first training batch using `measure_flops`.
     - Tracks rolling throughput metrics via `Throughput` with a window equal to
-      the Trainer's `log_every_n_steps` (or a provided logging_interval).
+      the user input window size.
     - Logs MFU to the trainer loggers (e.g., W&B) at the same cadence as other metrics.
 
     Args:
@@ -25,8 +25,9 @@ class ModelFLOPSUtilizationCallback(Callback):
             but FLOPs/s can still be tracked if desired in the future.
         use_backward: If True, include backward pass FLOPs in the measurement by
             creating a scalar loss and calling backward inside `measure_flops`.
-        logging_interval: Override the rolling window and logging cadence. If None,
-            defaults to Trainer.log_every_n_steps.
+        logging_interval: The interval at which to log MFU.
+        cell_set_len: The length of the cell set.
+        window_size: The size of the rolling window.
     """
 
     def __init__(
