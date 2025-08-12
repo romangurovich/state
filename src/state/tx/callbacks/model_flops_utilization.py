@@ -59,7 +59,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         
 
     def setup(self, trainer: Trainer, pl_module, stage: str) -> None:
-        # Initialize throughput tracker with rolling window equal to logging cadence
+        # Initialize throughput tracker 
         world_size = getattr(trainer, "num_devices")
         assert isinstance(world_size, int), f"world_size must be an integer, got {type(world_size)}"
         assert world_size > 0, f"world_size must be greater than 0, got {world_size}"
