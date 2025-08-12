@@ -104,7 +104,7 @@ class ModelFLOPSUtilizationCallback(Callback):
             loss.backward()
         return loss
 
-    def _measure_flops_once(self, trainer, pl_module, batch: Any) -> None:
+    def _measure_flops_once(self, trainer: Trainer, pl_module: Any, batch: Any) -> None:
         if self._measured:
             return
 
