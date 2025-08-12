@@ -32,13 +32,15 @@ class FakeModel(torch.nn.Module):
         return y.sum()
 
     def log(self, name, value, *, prog_bar=False, on_step=False, on_epoch=False):
-        self.logged.append({
-            "name": name,
-            "value": value,
-            "prog_bar": prog_bar,
-            "on_step": on_step,
-            "on_epoch": on_epoch,
-        })
+        self.logged.append(
+            {
+                "name": name,
+                "value": value,
+                "prog_bar": prog_bar,
+                "on_step": on_step,
+                "on_epoch": on_epoch,
+            }
+        )
 
 
 @pytest.fixture

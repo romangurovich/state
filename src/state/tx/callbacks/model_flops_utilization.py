@@ -2,6 +2,7 @@ import time
 from typing import Any, Dict, Optional
 import logging
 from typing_extensions import AnyStr
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -35,7 +36,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         available_flops: Optional[float] = None,
         use_backward: bool = False,
         logging_interval: int = 50,
-        cell_set_len: Optional[int] = None, 
+        cell_set_len: Optional[int] = None,
         window_size: int = 20,
     ) -> None:
         super().__init__()
@@ -57,15 +58,13 @@ class ModelFLOPSUtilizationCallback(Callback):
         self._cumulative_time: float = 0.0
         self._cumulative_batches: int = 0
         self._cumulative_samples: int = 0
-        
 
     def setup(self, trainer: Trainer, pl_module: Any, stage: str) -> None:
-        # Initialize throughput tracker 
+        # Initialize throughput tracker
         world_size = getattr(trainer, "num_devices")
         assert isinstance(world_size, int), f"world_size must be an integer, got {type(world_size)}"
         assert world_size > 0, f"world_size must be greater than 0, got {world_size}"
         logger.info(f"ModelFLOPSUtilizationCallback: Initializing throughput tracker with world_size: {world_size}")
-
 
         self._throughput = Throughput(
             available_flops=self.available_flops,
@@ -83,7 +82,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         In the cell-load pipeline, the sampler yields flattened batches of size
         batch_size * cell_set_len. Divide the leading dimension by cell_set_len to recover the true batch size.
         """
-        batch_size = batch['pert_cell_emb'].shape[0]
+        batch_size = batch["pert_cell_emb"].shape[0]
         return batch_size // self.cell_set_len
 
     def _trainstep_forward_backward(self, model: LightningModule, batch: Any) -> torch.Tensor:
@@ -98,7 +97,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         # Clean gradients before measuring
         model.zero_grad(set_to_none=True)
         # Call training_step with the expected signature
-        loss: torch.Tensor = model.training_step(batch, 0, padded=True) # type: ignore
+        loss: torch.Tensor = model.training_step(batch, 0, padded=True)  # type: ignore
         # Backward to include backward-pass FLOPs
         if self.use_backward:
             loss.backward()
@@ -163,7 +162,7 @@ class ModelFLOPSUtilizationCallback(Callback):
                 pl_module.log("mfu (%)", mfu, prog_bar=False, on_step=True, on_epoch=False)
 
             # Log cell_sets (cell_sentences) per second
-            cell_sets_per_sec = metrics.get("global/samples_per_sec", metrics.get("device/samples_per_sec", None))  
+            cell_sets_per_sec = metrics.get("global/samples_per_sec", metrics.get("device/samples_per_sec", None))
             if cell_sets_per_sec is not None:
                 pl_module.log(
                     "cell_sets_per_sec",
