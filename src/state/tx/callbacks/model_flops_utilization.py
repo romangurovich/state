@@ -80,8 +80,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         """Infer the logical batch size.
 
         In the cell-load pipeline, the sampler yields flattened batches of size
-        batch_size * cell_set_len. If we can discover `cell_set_len`,
-        divide the leading dimension by it to recover the true batch size.
+        batch_size * cell_set_len. Divide the leading dimension by cell_set_len to recover the true batch size.
         """
         batch_size = batch['pert_cell_emb'].shape[0]
         return batch_size // self.cell_set_len
