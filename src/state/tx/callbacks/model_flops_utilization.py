@@ -152,7 +152,7 @@ class ModelFLOPSUtilizationCallback(Callback):
                 time=self._cumulative_time,
                 batches=self._cumulative_batches,
                 samples=self._cumulative_samples,
-                flops=self._flops_per_batch * self.logging_interval,
+                flops=self._flops_per_batch * self.logging_interval, # type: ignore
             )
 
             metrics: Dict[str, float] = self._throughput.compute()
