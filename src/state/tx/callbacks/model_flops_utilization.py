@@ -1,6 +1,7 @@
 import time
 from typing import Any, Dict, Optional
 import logging
+from typing_extensions import AnyStr
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -58,7 +59,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         self._cumulative_samples: int = 0
         
 
-    def setup(self, trainer: Trainer, pl_module, stage: str) -> None:
+    def setup(self, trainer: Trainer, pl_module: Any, stage: str) -> None:
         # Initialize throughput tracker 
         world_size = getattr(trainer, "num_devices")
         assert isinstance(world_size, int), f"world_size must be an integer, got {type(world_size)}"
