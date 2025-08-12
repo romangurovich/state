@@ -200,12 +200,13 @@ def run_tx_train(cfg: DictConfig):
     batch_speed_monitor = BatchSpeedMonitorCallback()
     
     # Add ModelFLOPSUtilizationCallback to track and log MFU
-    mfu_available_flops = cfg["training"].get("theoretical_peak_flops", None)
-    mfu_use_backward = cfg["training"].get("mfu_use_backward", False)
+    mfu_available_flops = cfg['training']['available_flops']
+    mfu_use_backward = cfg['training']['use_backward']
     mfu_cb = ModelFLOPSUtilizationCallback(
         available_flops=mfu_available_flops,
         use_backward=mfu_use_backward,
-        logging_interval=None,  # defaults to Trainer.log_every_n_steps
+        logging_interval=cfg["training"]["logging_interval"],
+        cell_set_len=cfg["model"]["kwargs"]["cell_set_len"]
     )
 
     callbacks = ckpt_callbacks + [batch_speed_monitor, mfu_cb]
