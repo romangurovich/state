@@ -41,12 +41,12 @@ class ModelFLOPSUtilizationCallback(Callback):
     ) -> None:
         super().__init__()
         self.available_flops = available_flops
-        logger.info(f"ModelFLOPSUtilizationCallback: Using available flops: {self.available_flops}")
+        print(f"ModelFLOPSUtilizationCallback: Using available flops: {self.available_flops}")
         self.use_backward = use_backward
         self.logging_interval = logging_interval
-        logger.info(f"ModelFLOPSUtilizationCallback: Using logging interval: {self.logging_interval}")
+        print(f"ModelFLOPSUtilizationCallback: Using logging interval: {self.logging_interval}")
         self.cell_set_len = cell_set_len
-        logger.info(f"ModelFLOPSUtilizationCallback: Using cell set length: {self.cell_set_len}")
+        print(f"ModelFLOPSUtilizationCallback: Using cell set length: {self.cell_set_len}")
 
         self._throughput: Optional[Throughput] = None
         self._window_size: int = window_size
@@ -64,7 +64,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         world_size = getattr(trainer, "num_devices")
         assert isinstance(world_size, int), f"world_size must be an integer, got {type(world_size)}"
         assert world_size > 0, f"world_size must be greater than 0, got {world_size}"
-        logger.info(f"ModelFLOPSUtilizationCallback: Initializing throughput tracker with world_size: {world_size}")
+        print(f"ModelFLOPSUtilizationCallback: Initializing throughput tracker with world_size: {world_size}")
 
         self._throughput = Throughput(
             available_flops=self.available_flops,
@@ -112,7 +112,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         # Measure FLOPs using a single callable that runs training_step and backward
         forward_fn = lambda: self._trainstep_forward_backward(model, batch)
         self._flops_per_batch = int(measure_flops(model, forward_fn=forward_fn))
-        logger.info(f"ModelFLOPSUtilizationCallback: Measured FLOPs per batch: {self._flops_per_batch}")
+        print(f"ModelFLOPSUtilizationCallback: Measured FLOPs per batch: {self._flops_per_batch}")
         pl_module.log("flops_per_batch", self._flops_per_batch, prog_bar=False, on_step=True, on_epoch=False)
 
         # Clear gradients before real training continues (safety)
