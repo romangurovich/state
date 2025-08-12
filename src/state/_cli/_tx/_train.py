@@ -199,17 +199,23 @@ def run_tx_train(cfg: DictConfig):
     # Add BatchSpeedMonitorCallback to log batches per second to wandb
     batch_speed_monitor = BatchSpeedMonitorCallback()
 
-    # Add ModelFLOPSUtilizationCallback to track and log MFU
-    mfu_available_flops = cfg["training"]["available_flops"]
-    mfu_use_backward = cfg["training"]["use_backward"]
-    mfu_cb = ModelFLOPSUtilizationCallback(
-        available_flops=mfu_available_flops,
-        use_backward=mfu_use_backward,
-        logging_interval=cfg["training"]["logging_interval"],
-        cell_set_len=cfg["model"]["kwargs"]["cell_set_len"],
-    )
+    callbacks = ckpt_callbacks + [batch_speed_monitor]
 
-    callbacks = ckpt_callbacks + [batch_speed_monitor, mfu_cb]
+    # Add ModelFLOPSUtilizationCallback to track and log MFU
+    if cfg["training"]["use_mfu"]:
+        mfu_available_flops = cfg["training"]["mfu_kwargs"]["available_flops"]
+        mfu_use_backward = cfg["training"]["mfu_kwargs"]["use_backward"]
+        mfu_logging_interval = cfg["training"]["mfu_kwargs"]["logging_interval"]
+        mfu_window_size = cfg["training"]["mfu_kwargs"]["window_size"]
+        mfu_cb = ModelFLOPSUtilizationCallback(
+            available_flops=mfu_available_flops,
+            use_backward=mfu_use_backward,
+            logging_interval=mfu_logging_interval,
+            cell_set_len=cfg["model"]["kwargs"]["cell_set_len"],
+            window_size=mfu_window_size,
+        )
+
+        callbacks.append(mfu_cb)
 
     logger.info("Loggers and callbacks set up.")
 
