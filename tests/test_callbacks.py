@@ -1,15 +1,8 @@
-import os
-import sys
-from typing import Any, Dict, cast
+from typing import Any, cast
 import pytest
 
-# Ensure `src` layout is importable when running tests from repo root
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-SRC_DIR = os.path.join(REPO_ROOT, "src")
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
-import state.tx.callbacks.model_flops_utilization as mfu
-ModelFLOPSUtilizationCallback = mfu.ModelFLOPSUtilizationCallback
+from state.tx.callbacks import model_flops_utilization as mfu
+from state.tx.callbacks.model_flops_utilization import ModelFLOPSUtilizationCallback
 import torch
 
 
