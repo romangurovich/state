@@ -50,9 +50,10 @@ class ModelFLOPSUtilizationCallback(Callback):
 
         self._throughput: Optional[Throughput] = None
         self._window_size: int = window_size
+        print(f"ModelFLOPSUtilizationCallback: Using window size: {self._window_size}")
         self._flops_per_batch: Optional[int] = None
         self._measured: bool = False
-        self._batch_start_time: Optional[float] = None
+        self._train_start_time: Optional[float] = None
         self._cell_sets_len: Optional[int] = None
         # Cumulative counters since training start
         self._cumulative_time: float = 0.0
@@ -126,40 +127,40 @@ class ModelFLOPSUtilizationCallback(Callback):
         # Only calculate FLOPs on the first batch of the first epoch
         if not self._measured and batch_idx == 0 and trainer.current_epoch == 0:
             self._measure_flops_once(trainer, pl_module, batch)
-        self._batch_start_time = time.time()
+            self._train_start_time = time.time()
 
     def on_train_batch_end(self, trainer: Trainer, pl_module: Any, outputs: Any, batch: dict, batch_idx: int) -> None:
-        if self._batch_start_time is None or self._throughput is None:
+        if self._train_start_time is None or self._throughput is None:
             return
-
-        # Synchronize CUDA if available to ensure accurate timing
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        # Duration for this batch
-        elapsed = time.time() - self._batch_start_time
+        
         samples = self._infer_batch_size(batch)
 
         # Update cumulative totals since training start
-        self._cumulative_time += elapsed
         self._cumulative_batches += 1
         self._cumulative_samples += samples
 
-        # Update throughput tracker
-        self._throughput.update(
-            time=self._cumulative_time,
-            batches=self._cumulative_batches,
-            samples=self._cumulative_samples,
-            flops=self._flops_per_batch,
-        )
-
         # Log at a cadence controled by the logging_interval
         if batch_idx % self.logging_interval == 0 and batch_idx > 0:
+            # Synchronize CUDA if available to ensure accurate timing
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            # Cumulative duration since training start
+            self._cumulative_time = time.time() - self._train_start_time
+
+            # Update throughput tracker
+            self._throughput.update(
+                time=self._cumulative_time,
+                batches=self._cumulative_batches,
+                samples=self._cumulative_samples,
+                flops=self._flops_per_batch * self.logging_interval,
+            )
+
             metrics: Dict[str, float] = self._throughput.compute()
             # Prefer global MFU when available, otherwise device MFU
             mfu = metrics.get("global/mfu", metrics.get("device/mfu", None))
             if mfu is not None:
                 mfu = 100 * mfu
-                pl_module.log("mfu (%)", mfu, prog_bar=False, on_step=True, on_epoch=False)
+                pl_module.log("mfu (%)", mfu, prog_bar=True, on_step=True, on_epoch=False)
 
             # Log cell_sets (cell_sentences) per second
             cell_sets_per_sec = metrics.get("global/samples_per_sec", metrics.get("device/samples_per_sec", None))
