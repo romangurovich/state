@@ -7,8 +7,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 SRC_DIR = os.path.join(REPO_ROOT, "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
-import state.tx.callbacks.model_flops_utilization as mfu_mod
-ModelFLOPSUtilizationCallback = mfu_mod.ModelFLOPSUtilizationCallback
+import state.tx.callbacks.model_flops_utilization as mfu
+ModelFLOPSUtilizationCallback = mfu.ModelFLOPSUtilizationCallback
 
 
 class FakeTrainer:
@@ -145,7 +145,7 @@ class TestModelFLOPSUtilizationCallback:
             fake_ctor_calls.update(kwargs)
             return fake
 
-        monkeypatch.setattr(mfu_mod, "Throughput", fake_throughput_ctor)
+        monkeypatch.setattr(mfu, "Throughput", fake_throughput_ctor)
         tr = FakeTrainer(num_devices=3)
         callback.setup(tr, object(), stage="fit")
         assert isinstance(callback._throughput, FakeThroughput)
@@ -184,7 +184,7 @@ class TestModelFLOPSUtilizationCallback:
             calls["count"] += 1
             return 12345
 
-        monkeypatch.setattr(mfu_mod, "measure_flops", fake_measure_flops)
+        monkeypatch.setattr(mfu, "measure_flops", fake_measure_flops)
 
         model = FakeLightningModel()
         trainer = FakeTrainer()
@@ -204,7 +204,7 @@ class TestModelFLOPSUtilizationCallback:
         pl = FakeLightningModel()
         cb2 = ModelFLOPSUtilizationCallback(cell_set_len=5)
         cb2._measured = False
-        monkeypatch.setattr(mfu_mod, "measure_flops", fake_measure_flops)
+        monkeypatch.setattr(mfu, "measure_flops", fake_measure_flops)
         cb2._measure_flops_once(trainer, pl, {"x": 1})
         assert any(entry["name"] == "flops_per_batch" and entry["value"] == 12345 for entry in pl.logged)
 
@@ -249,7 +249,7 @@ class TestModelFLOPSUtilizationCallback:
         callback._cumulative_samples = 0
 
         # Make elapsed time deterministic
-        monkeypatch.setattr(mfu_mod.time, "time", lambda: 1.0)
+        monkeypatch.setattr(mfu.time, "time", lambda: 1.0)
         callback._batch_start_time = 0.0
 
         # Configure throughput to return global metrics
@@ -287,7 +287,7 @@ class TestModelFLOPSUtilizationCallback:
         callback._throughput = FakeThroughput()
         callback._flops_per_batch = 10
         callback.logging_interval = 1
-        monkeypatch.setattr(mfu_mod.time, "time", lambda: 2.0)
+        monkeypatch.setattr(mfu.time, "time", lambda: 2.0)
         callback._batch_start_time = 0.0
         callback._throughput.metrics_to_return = {
             "device/mfu": 0.5,
