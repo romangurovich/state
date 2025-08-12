@@ -20,9 +20,7 @@ class ModelFLOPSUtilizationCallback(Callback):
     - Logs MFU to the trainer loggers (e.g., W&B) at the same cadence as other metrics.
 
     Args:
-        available_flops: Theoretical peak FLOPs for the device (per device), e.g.,
-            GPU TFLOPs converted to FLOPs per second. If None, MFU won't be computed
-            but FLOPs/s can still be tracked if desired in the future.
+        available_flops: Theoretical peak flops for device in TFLOPS, example: enter 60e12 for 60 TFLOPS.
         use_backward: If True, include backward pass FLOPs in the measurement by
             creating a scalar loss and calling backward inside `measure_flops`.
         logging_interval: The interval at which to log MFU.
