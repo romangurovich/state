@@ -149,7 +149,7 @@ class ModelFLOPSUtilizationCallback(Callback):
             flops=self._flops_per_batch,
         )
 
-        # Log at the same cadence as other metrics (controlled by log_every_n_steps)
+        # Log at a cadence controled by the logging_interval
         if batch_idx % self.logging_interval == 0 and batch_idx > 0:
             metrics: Dict[str, float] = self._throughput.compute()
             # Prefer global MFU when available, otherwise device MFU
