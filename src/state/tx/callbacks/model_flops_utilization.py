@@ -21,7 +21,7 @@ class ModelFLOPSUtilizationCallback(Callback):
 
     Args:
         available_flops: Theoretical peak flops for device in TFLOPS, example: enter 60e12 for 60 TFLOPS.
-        use_backward: If True, include backward pass FLOPs in the measurement 
+        use_backward: If True, include backward pass FLOPs in the measurement.
         logging_interval: The interval at which to log MFU.
         cell_set_len: The length of the cell set.
         window_size: The size of the rolling window.
