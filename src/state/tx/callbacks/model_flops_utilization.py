@@ -91,6 +91,9 @@ class ModelFLOPSUtilizationCallback(Callback):
 
         This intentionally targets StateTransitionPerturbationModel's signature and
         performs both forward and backward to capture full FLOPs.
+
+        !!WARNING!!
+        This has only been tested with StateTransitionPerturbationModel. Behavior with any other model has not been verified.
         """
         # Clean gradients before measuring
         model.zero_grad(set_to_none=True)
