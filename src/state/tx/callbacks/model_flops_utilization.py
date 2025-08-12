@@ -122,13 +122,13 @@ class ModelFLOPSUtilizationCallback(Callback):
         setattr(pl_module, "flops_per_batch", self._flops_per_batch)
         self._measured = True
 
-    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx: int) -> None:
+    def on_train_batch_start(self, trainer: Trainer, pl_module: Any, batch: dict, batch_idx: int) -> None:
         if not self._measured and batch_idx == 0 and trainer.current_epoch == 0:
             # Ensure batch is on device (Lightning already transfers before hooks)
             self._measure_flops_once(trainer, pl_module, batch)
         self._batch_start_time = time.time()
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx: int) -> None:
+    def on_train_batch_end(self, trainer: Trainer, pl_module: Any, outputs: Any, batch: dict, batch_idx: int) -> None:
         if self._batch_start_time is None or self._throughput is None:
             return
 
