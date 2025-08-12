@@ -114,6 +114,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         forward_fn = lambda: self._trainstep_forward_backward(model, batch)
         self._flops_per_batch = int(measure_flops(model, forward_fn=forward_fn))
         logger.info(f"ModelFLOPSUtilizationCallback: Measured FLOPs per batch: {self._flops_per_batch}")
+        pl_module.log("flops_per_batch", self._flops_per_batch, prog_bar=False, on_step=True, on_epoch=False)
 
         # Clear gradients before real training continues (safety)
         model.zero_grad(set_to_none=True)
