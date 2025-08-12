@@ -133,6 +133,9 @@ class ModelFLOPSUtilizationCallback(Callback):
         if self._batch_start_time is None or self._throughput is None:
             return
 
+        # Synchronize CUDA if available to ensure accurate timing
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         # Duration for this batch
         elapsed = time.time() - self._batch_start_time
         samples = self._infer_batch_size(batch)
