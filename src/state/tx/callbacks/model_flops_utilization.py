@@ -147,12 +147,14 @@ class ModelFLOPSUtilizationCallback(Callback):
             # Cumulative duration since training start
             self._cumulative_time = time.time() - self._train_start_time
 
+            flops = self._flops_per_batch * self.logging_interval if batch_idx > self.logging_interval else self._flops_per_batch * (self.logging_interval + 1) # type: ignore
+
             # Update throughput tracker
             self._throughput.update(
                 time=self._cumulative_time,
-                batches=self._cumulative_batches,
+                batches=batch_idx + 1,
                 samples=self._cumulative_samples,
-                flops=self._flops_per_batch * self.logging_interval, # type: ignore
+                flops=flops, # type: ignore
             )
 
             metrics: Dict[str, float] = self._throughput.compute()
