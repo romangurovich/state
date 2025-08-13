@@ -43,6 +43,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         self.available_flops = available_flops
         print(f"ModelFLOPSUtilizationCallback: Using available flops: {self.available_flops}")
         self.use_backward = use_backward
+        print(f"ModelFLOPSUtilizationCallback: Using use_backward: {self.use_backward}")
         self.logging_interval = logging_interval
         print(f"ModelFLOPSUtilizationCallback: Using logging interval: {self.logging_interval}")
         self.cell_set_len = cell_set_len
