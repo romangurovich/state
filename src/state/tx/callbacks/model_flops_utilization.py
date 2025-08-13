@@ -127,6 +127,8 @@ class ModelFLOPSUtilizationCallback(Callback):
         # Only calculate FLOPs on the first batch of the first epoch
         if not self._measured and batch_idx == 0 and trainer.current_epoch == 0:
             self._measure_flops_once(trainer, pl_module, batch)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             self._train_start_time = time.time()
 
     def on_train_batch_end(self, trainer: Trainer, pl_module: Any, outputs: Any, batch: dict, batch_idx: int) -> None:
@@ -147,12 +149,15 @@ class ModelFLOPSUtilizationCallback(Callback):
             # Cumulative duration since training start
             self._cumulative_time = time.time() - self._train_start_time
 
-            flops = self._flops_per_batch * self.logging_interval if batch_idx > self.logging_interval else self._flops_per_batch * (self.logging_interval + 1) # type: ignore
+            if batch_idx == self.logging_interval:
+                flops = self._flops_per_batch * (self.logging_interval + 1) # type: ignore
+            else:
+                flops = self._flops_per_batch * self.logging_interval # type: ignore
 
             # Update throughput tracker
             self._throughput.update(
                 time=self._cumulative_time,
-                batches=batch_idx + 1,
+                batches=self._cumulative_batches,
                 samples=self._cumulative_samples,
                 flops=flops, # type: ignore
             )
