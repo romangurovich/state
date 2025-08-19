@@ -6,28 +6,55 @@ def add_arguments_infer(parser: argparse.ArgumentParser):
         "--checkpoint",
         type=str,
         required=False,
-        help="Path to model checkpoint (.ckpt). If not provided, will use model_dir/checkpoints/final.ckpt",
+        help="Path to model checkpoint (.ckpt). If not provided, uses model_dir/checkpoints/final.ckpt",
     )
     parser.add_argument("--adata", type=str, required=True, help="Path to input AnnData file (.h5ad)")
-    parser.add_argument("--embed_key", type=str, default=None, help="Key in adata.obsm for input features")
     parser.add_argument(
-        "--pert_col", type=str, default="drugname_drugconc", help="Column in adata.obs for perturbation labels"
+        "--embed-key",
+        type=str,
+        default=None,
+        help="Key in adata.obsm for input features (if absent or None, uses adata.X)",
+    )
+    parser.add_argument(
+        "--pert-col",
+        type=str,
+        default="drugname_drugconc",
+        help="Column in adata.obs containing perturbation labels",
     )
     parser.add_argument("--output", type=str, default=None, help="Path to output AnnData file (.h5ad)")
     parser.add_argument(
-        "--model_dir",
+        "--model-dir",
         type=str,
         required=True,
-        help="Path to the model_dir containing the config.yaml file and the pert_onehot_map.pt file that was saved during training.",
+        help=(
+            "Path to the run directory that contains training artifacts: "
+            "config.yaml, var_dims.pkl, pert_onehot_map.pt, batch_onehot_map.pkl, checkpoints/"
+        ),
     )
     parser.add_argument(
-        "--celltype_col", type=str, default=None, help="Column in adata.obs for cell type labels (optional)"
+        "--celltype-col",
+        type=str,
+        default=None,
+        help=(
+            "Column in adata.obs to GROUP BY (defaults to data.kwargs.cell_type_key from config, "
+            "finally falls back to 'cell_type')."
+        ),
     )
     parser.add_argument(
-        "--celltypes", type=str, default=None, help="Comma-separated list of cell types to include (optional)"
+        "--celltypes",
+        type=str,
+        default=None,
+        help="Optional comma-separated allowlist of cell types to include after grouping",
     )
-    parser.add_argument("--batch_size", type=int, default=1000, help="Batch size for inference (default: 1000)")
-
+    parser.add_argument(
+        "--batch-col",
+        type=str,
+        default=None,
+        help=(
+            "Optional override for the batch column name in adata.obs. "
+            "If not provided, uses data.kwargs.batch_col from config when available."
+        ),
+    )
 
 def run_tx_infer(args):
     import logging
@@ -45,195 +72,266 @@ def run_tx_infer(args):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
+    # ---------- Utils ----------
     def load_config(cfg_path: str) -> dict:
-        """Load config from the YAML file that was dumped during training."""
         if not os.path.exists(cfg_path):
             raise FileNotFoundError(f"Could not find config file: {cfg_path}")
         with open(cfg_path, "r") as f:
-            cfg = yaml.safe_load(f)
-        return cfg
+            return yaml.safe_load(f)
 
-    # Load the config
+    def as_numpy(x):
+        try:
+            return x.toarray()
+        except Exception:
+            return np.asarray(x)
+
+    def to_str_array(series):
+        # robustly convert categories/objects/numbers to string keys
+        return np.asarray(series.astype(str).values)
+
+    # ---------- Load training artifacts ----------
     config_path = os.path.join(args.model_dir, "config.yaml")
     cfg = load_config(config_path)
     logger.info(f"Loaded config from {config_path}")
 
-    # Determine checkpoint path
-    if args.checkpoint is not None:
+    # Figure out default columns from training config
+    cfg_data_kwargs = cfg.get("data", {}).get("kwargs", {}) if isinstance(cfg, dict) else {}
+    default_celltype_col = cfg_data_kwargs.get("cell_type_key", None)
+    default_batch_col = cfg_data_kwargs.get("batch_col", None)
+
+    celltype_col = args.celltype_col or default_celltype_col or "cell_type"
+    batch_col = args.batch_col or default_batch_col
+
+    # Choose checkpoint path
+    if args.checkpoint:
         checkpoint_path = args.checkpoint
     else:
         checkpoint_path = os.path.join(args.model_dir, "checkpoints", "final.ckpt")
-        logger.info(f"No checkpoint provided, using default: {checkpoint_path}")
+        logger.info(f"No --checkpoint provided, using default: {checkpoint_path}")
 
-    # Get perturbation dimensions and mapping from data module
+    # var_dims is only needed for some shapes; we can proceed without it but keep for safety
     var_dims_path = os.path.join(args.model_dir, "var_dims.pkl")
-    with open(var_dims_path, "rb") as f:
-        var_dims = pickle.load(f)
-    pert_dim = var_dims["pert_dim"]
+    if os.path.exists(var_dims_path):
+        with open(var_dims_path, "rb") as f:
+            var_dims = pickle.load(f)
+        logger.info(f"Loaded var_dims from {var_dims_path}")
+        pert_dim = var_dims.get("pert_dim", None)
+    else:
+        logger.warning(f"var_dims.pkl not found at {var_dims_path}; will infer dims from checkpoint and data.")
+        var_dims = {}
+        pert_dim = None
 
-    # Load model
+    # Load mappings saved by training
+    pert_onehot_map_path = os.path.join(args.model_dir, "pert_onehot_map.pt")
+    if not os.path.exists(pert_onehot_map_path):
+        raise FileNotFoundError(f"Missing pert onehot map at {pert_onehot_map_path}")
+    pert_onehot_map = torch.load(pert_onehot_map_path, map_location="cpu", weights_only=False)
+
+    batch_onehot_map_path = os.path.join(args.model_dir, "batch_onehot_map.pkl")
+    batch_onehot_map = None
+    if os.path.exists(batch_onehot_map_path):
+        with open(batch_onehot_map_path, "rb") as f:
+            batch_onehot_map = pickle.load(f)
+        logger.info(f"Loaded batch_onehot_map from {batch_onehot_map_path} (size={len(batch_onehot_map)})")
+    else:
+        logger.warning(f"batch_onehot_map.pkl not found at {batch_onehot_map_path}; will fallback to zeros if needed.")
+
+    # Control perturbation fallback
+    control_pert = cfg_data_kwargs.get("control_pert", "non-targeting")
+    if args.pert_col == "drugname_drugconc":  # Tahoe special-case retained for backward-compat
+        control_pert = "[('DMSO_TF', 0.0, 'uM')]"
+
+    # ---------- Load model ----------
     logger.info(f"Loading model from checkpoint: {checkpoint_path}")
     model = StateTransitionPerturbationModel.load_from_checkpoint(checkpoint_path)
     model.eval()
-    cell_sentence_len = model.cell_sentence_len
     device = next(model.parameters()).device
-
-    # Load AnnData
-    logger.info(f"Loading AnnData from: {args.adata}")
-    adata = sc.read_h5ad(args.adata)
-
-    # Optionally filter by cell type
-    if args.celltype_col is not None and args.celltypes is not None:
-        celltypes = [ct.strip() for ct in args.celltypes.split(",")]
-        if args.celltype_col not in adata.obs:
-            raise ValueError(f"Column '{args.celltype_col}' not found in adata.obs.")
-        initial_n = adata.n_obs
-        adata = adata[adata.obs[args.celltype_col].isin(celltypes)].copy()
-        logger.info(f"Filtered AnnData to {adata.n_obs} cells of types {celltypes} (from {initial_n} cells)")
-    elif args.celltype_col is not None:
-        if args.celltype_col not in adata.obs:
-            raise ValueError(f"Column '{args.celltype_col}' not found in adata.obs.")
-        logger.info(f"No cell type filtering applied, but cell type column '{args.celltype_col}' is available.")
-
-    # Get input features
-    if args.embed_key in adata.obsm:
-        X = adata.obsm[args.embed_key]
-        logger.info(f"Using adata.obsm['{args.embed_key}'] as input features: shape {X.shape}")
-    else:
-        try:
-            X = adata.X.toarray()
-        except:
-            X = adata.X
-        logger.info(f"Using adata.X as input features: shape {X.shape}")
-
-    # Prepare perturbation tensor using the data module's mapping
-    pert_names = adata.obs[args.pert_col].values
-    pert_tensor = torch.zeros((len(pert_names), pert_dim), device="cpu")  # Keep on CPU initially
-    logger.info(f"Perturbation tensor shape: {pert_tensor.shape}")
-
-    # Load perturbation mapping from torch file
-    pert_onehot_map_path = os.path.join(args.model_dir, "pert_onehot_map.pt")
-    pert_onehot_map = torch.load(pert_onehot_map_path, weights_only=False)
-
-    logger.info(f"Data module has {len(pert_onehot_map)} perturbations in mapping")
-    logger.info(f"First 10 perturbations in data module: {list(pert_onehot_map.keys())[:10]}")
-
-    unique_pert_names = sorted(set(pert_names))
-    logger.info(f"AnnData has {len(unique_pert_names)} unique perturbations")
-    logger.info(f"First 10 perturbations in AnnData: {unique_pert_names[:10]}")
-
-    # Check overlap
-    overlap = set(unique_pert_names) & set(pert_onehot_map.keys())
-    logger.info(f"Overlap between AnnData and data module: {len(overlap)} perturbations")
-    if len(overlap) < len(unique_pert_names):
-        missing = set(unique_pert_names) - set(pert_onehot_map.keys())
-        logger.warning(f"Missing perturbations: {list(missing)[:10]}")
-
-    # Check if there's a control perturbation that might match
-    control_pert = cfg["data"]["kwargs"]["control_pert"]
-    if args.pert_col == "drugname_drugconc":  # quick hack for tahoe
-        control_pert = "[('DMSO_TF', 0.0, 'uM')]"
-    logger.info(f"Control perturbation in data module: '{control_pert}'")
-
-    matched_count = 0
-    for idx, name in enumerate(pert_names):
-        if name in pert_onehot_map:
-            pert_tensor[idx] = pert_onehot_map[name]
-            matched_count += 1
-        else:
-            # For now, use control perturbation as fallback
-            if control_pert in pert_onehot_map:
-                pert_tensor[idx] = pert_onehot_map[control_pert]
-            else:
-                # Use first available perturbation as fallback
-                first_pert = list(pert_onehot_map.keys())[0]
-                pert_tensor[idx] = pert_onehot_map[first_pert]
-
-    logger.info(f"Matched {matched_count} out of {len(pert_names)} perturbations")
-
-    # Process in batches with progress bar
-    # Use cell_sentence_len as batch size since model expects this
-    n_samples = len(pert_names)
-    batch_size = cell_sentence_len  # Model requires this exact batch size
-    n_batches = (n_samples + batch_size - 1) // batch_size  # Ceiling division
+    cell_set_len = getattr(model, "cell_sentence_len", 256)
 
     logger.info(
-        f"Running inference on {n_samples} samples in {n_batches} batches of size {batch_size} (model's cell_sentence_len)..."
+        f"Model ready on device={device}; cell_set_len={cell_set_len}; "
+        f"batch_encoder={'yes' if getattr(model, 'batch_encoder', None) is not None else 'no'}"
     )
 
-    all_preds = []
+    # ---------- Load AnnData ----------
+    logger.info(f"Loading AnnData from: {args.adata}")
+    adata = sc.read_h5ad(args.adata)
+    n = adata.n_obs
 
-    with torch.no_grad():
-        progress_bar = tqdm(total=n_samples, desc="Processing samples", unit="samples")
+    # Optional cell type filtering (before grouping)
+    if args.celltypes is not None:
+        keep = set([s.strip() for s in args.celltypes.split(",") if s.strip()])
+        if celltype_col not in adata.obs:
+            raise ValueError(f"Column '{celltype_col}' not found in adata.obs.")
+        initial = adata.n_obs
+        adata = adata[adata.obs[celltype_col].astype(str).isin(keep)].copy()
+        logger.info(f"Filtered to {adata.n_obs}/{initial} cells with {celltype_col} in {sorted(keep)}")
 
-        for batch_idx in range(n_batches):
-            start_idx = batch_idx * batch_size
-            end_idx = min(start_idx + batch_size, n_samples)
-            current_batch_size = end_idx - start_idx
+    # Features: use .obsm[embed_key] if present, else .X
+    using_obsm = args.embed_key is not None and args.embed_key in adata.obsm
+    if using_obsm:
+        X_all = np.asarray(adata.obsm[args.embed_key])
+        logger.info(f"Using adata.obsm['{args.embed_key}'] as input features: shape {X_all.shape}")
+    else:
+        X_all = as_numpy(adata.X)
+        logger.info(f"Using adata.X as input features: shape {X_all.shape}")
 
-            # Get batch data
-            X_batch = torch.tensor(X[start_idx:end_idx], dtype=torch.float32).to(device)
-            pert_batch = pert_tensor[start_idx:end_idx].to(device)
-            pert_names_batch = pert_names[start_idx:end_idx].tolist()
+    # Perturbation values per row
+    if args.pert_col not in adata.obs:
+        raise ValueError(f"Column '{args.pert_col}' not found in adata.obs.")
+    pert_names_all = to_str_array(adata.obs[args.pert_col])
 
-            # Pad the batch to cell_sentence_len if it's the last incomplete batch
-            if current_batch_size < cell_sentence_len:
-                # Pad with zeros for embeddings
-                padding_size = cell_sentence_len - current_batch_size
-                X_pad = torch.zeros((padding_size, X_batch.shape[1]), device=device)
-                X_batch = torch.cat([X_batch, X_pad], dim=0)
+    # Batch column (optional but recommended when model has batch_encoder)
+    if getattr(model, "batch_encoder", None) is not None:
+        if batch_col is None:
+            logger.warning(
+                "Model has a batch_encoder but no batch_col provided/available in config; "
+                "falling back to zeros for 'batch' indices."
+            )
+        elif batch_col not in adata.obs:
+            logger.warning(
+                f"Model has a batch_encoder but '{batch_col}' not found in adata.obs; "
+                "falling back to zeros for 'batch' indices."
+            )
 
-                # Pad perturbation tensor with control perturbation
-                pert_pad = torch.zeros((padding_size, pert_batch.shape[1]), device=device)
-                if control_pert in pert_onehot_map:
-                    pert_pad[:] = pert_onehot_map[control_pert].to(device)
+    # Grouping column (cell type by default)
+    if celltype_col not in adata.obs:
+        logger.warning(
+            f"Grouping column '{celltype_col}' not in adata.obs; proceeding without grouping (single group of all cells)."
+        )
+        groups = {"__ALL__": np.arange(adata.n_obs)}
+    else:
+        groups = {}
+        for ct, idx in adata.obs.groupby(celltype_col).indices.items():
+            groups[str(ct)] = np.asarray(idx, dtype=np.int64)
+        logger.info(f"Grouping by '{celltype_col}' into {len(groups)} group(s).")
+
+    # ---------- Helper mappers ----------
+    # infer pert_dim if not present
+    if pert_dim is None:
+        any_vec = next(iter(pert_onehot_map.values()))
+        pert_dim = int(any_vec.numel())
+
+    def encode_pert_window(names: np.ndarray) -> torch.Tensor:
+        """Map array[str] -> [L, pert_dim] one-hot (torch.float32, device)."""
+        out = torch.zeros((len(names), pert_dim), dtype=torch.float32, device=device)
+        matched = 0
+        control_vec = None
+        if control_pert in pert_onehot_map:
+            control_vec = pert_onehot_map[control_pert].to(device)
+
+        for i, name in enumerate(names):
+            vec = pert_onehot_map.get(name, None)
+            if vec is None:
+                if control_vec is not None:
+                    out[i] = control_vec
                 else:
-                    pert_pad[:, 0] = 1  # Default to first perturbation
-                pert_batch = torch.cat([pert_batch, pert_pad], dim=0)
-
-                # Extend perturbation names
-                pert_names_batch.extend([control_pert] * padding_size)
-
-            # Prepare batch - use same format as working code
-            batch = {
-                "ctrl_cell_emb": X_batch,
-                "pert_emb": pert_batch,  # Keep as 2D tensor
-                "pert_name": pert_names_batch,
-                "batch": torch.zeros((1, cell_sentence_len), device=device),  # Use (1, cell_sentence_len)
-            }
-
-            # Run inference on batch using padded=False like in working code
-            batch_preds = model.predict_step(batch, batch_idx=batch_idx, padded=False)
-
-            # Extract predictions from the dictionary returned by predict_step
-            # Use gene decoder output if available, otherwise use latent predictions
-            if "pert_cell_counts_preds" in batch_preds and batch_preds["pert_cell_counts_preds"] is not None:
-                # Use gene space predictions (from decoder)
-                pred_tensor = batch_preds["pert_cell_counts_preds"]
+                    # fall back to the first available vector
+                    first_k = next(iter(pert_onehot_map.keys()))
+                    out[i] = pert_onehot_map[first_k].to(device)
             else:
-                # Use latent space predictions
-                pred_tensor = batch_preds["preds"]
+                out[i] = vec.to(device)
+                matched += 1
+        return out
 
-            # Only keep predictions for the actual samples (not padding)
-            actual_preds = pred_tensor[:current_batch_size]
-            all_preds.append(actual_preds.cpu().numpy())
+    def encode_batch_indices_window(batch_vals: np.ndarray, seq_len: int) -> torch.Tensor:
+        """
+        Map array[str] -> [seq_len] Long indices for batch_encoder embedding.
+        Accepts dict values from training that could be ints or one-hot vectors.
+        """
+        if getattr(model, "batch_encoder", None) is None:
+            return torch.zeros((seq_len,), dtype=torch.long, device=device)
 
-            # Update progress bar
-            progress_bar.update(current_batch_size)
+        if batch_col is None or batch_onehot_map is None or batch_col not in adata.obs:
+            return torch.zeros((seq_len,), dtype=torch.long, device=device)
 
-        progress_bar.close()
+        idxs = np.zeros((seq_len,), dtype=np.int64)
+        for i, b in enumerate(batch_vals):
+            val = batch_onehot_map.get(b, None)
+            if val is None:
+                idxs[i] = 0
+            else:
+                # support either stored index (int) or one-hot (array/tensor)
+                if isinstance(val, (int, np.integer)):
+                    idxs[i] = int(val)
+                else:
+                    v = np.asarray(val)
+                    if v.ndim == 1:
+                        idxs[i] = int(np.argmax(v))
+                    else:
+                        idxs[i] = 0
+        return torch.from_numpy(idxs).to(device, dtype=torch.long)
 
-    # Concatenate all predictions
-    preds_np = np.concatenate(all_preds, axis=0)
+    # ---------- Inference over grouped, variable-length sequences ----------
+    logger.info("Beginning grouped inference with variable-length sequences (padded=False).")
+    total_cells = adata.n_obs
+    preds_np = None  # will allocate once we see the first prediction's dimension
 
-    if args.embed_key in adata.obsm:
+    # Prepare optional per-row batch values as strings
+    batch_vals_all = None
+    if batch_col is not None and batch_col in adata.obs:
+        batch_vals_all = to_str_array(adata.obs[batch_col])
+
+    processed = 0
+    pbar = tqdm(total=total_cells, desc="Inferring", unit="cells")
+    with torch.no_grad():
+        for group_name, idxs in groups.items():
+            # process windows of size <= cell_set_len
+            for start in range(0, len(idxs), cell_set_len):
+                win = idxs[start : start + cell_set_len]
+                seq_len = len(win)
+
+                X_batch_np = X_all[win]
+                X_batch = torch.tensor(X_batch_np, dtype=torch.float32, device=device)
+
+                pert_names_batch = pert_names_all[win]
+                pert_batch = encode_pert_window(pert_names_batch)
+
+                if batch_vals_all is not None:
+                    batch_vals_batch = batch_vals_all[win]
+                else:
+                    batch_vals_batch = np.array(["0"] * seq_len)
+                batch_indices = encode_batch_indices_window(batch_vals_batch, seq_len)
+
+                # Build batch dict; variable-length => padded=False
+                batch = {
+                    "ctrl_cell_emb": X_batch,           # [S, E_in]
+                    "pert_emb": pert_batch,             # [S, P]
+                    "pert_name": list(pert_names_batch),
+                    "batch": batch_indices,             # [S], long indices
+                }
+
+                # Model predict
+                out = model.predict_step(batch, batch_idx=0, padded=False)
+
+                # Choose decoded gene predictions if present, else latent
+                if "pert_cell_counts_preds" in out and out["pert_cell_counts_preds"] is not None:
+                    pred_tensor = out["pert_cell_counts_preds"]  # [S, Dg]
+                else:
+                    pred_tensor = out["preds"]                   # [S, De]
+
+                pred_np = pred_tensor.detach().float().cpu().numpy()
+
+                # Allocate global array lazily with correct width
+                if preds_np is None:
+                    preds_np = np.empty((total_cells, pred_np.shape[1]), dtype=np.float32)
+
+                preds_np[win] = pred_np
+                processed += seq_len
+                pbar.update(seq_len)
+    pbar.close()
+
+    # ---------- Write results ----------
+    if using_obsm:
         adata.obsm[args.embed_key] = preds_np
+        logger.info(f"Predictions written to adata.obsm['{args.embed_key}'] with shape {preds_np.shape}")
     else:
         adata.X = preds_np
-        
+        logger.info(f"Predictions written to adata.X with shape {preds_np.shape}")
+
     output_path = args.output or args.adata.replace(".h5ad", "_with_preds.h5ad")
     adata.write_h5ad(output_path)
-    logger.info(f"Saved predictions to {output_path} (in adata.X)")
+    logger.info(f"Saved predictions to {output_path}")
 
 
 def main():
