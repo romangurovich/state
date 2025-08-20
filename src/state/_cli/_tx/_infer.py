@@ -395,7 +395,18 @@ def run_tx_infer(args: argparse.Namespace):
 
             # --- iterate by perturbation so each forward pass is homogeneous ---
             grp_perts = np.unique(pert_names_all[grp_idx])
-            for p in tqdm(grp_perts, desc=f"Group {g}", disable=args.quiet):
+            POSTFIX_WIDTH = 30
+            pbar = tqdm(
+                grp_perts,
+                desc=f"Group {g}",
+                bar_format="{l_bar}{bar}{r_bar}",  # r_bar already has n/total, time, rate, and postfix
+                dynamic_ncols=True,
+                disable=args.quiet,
+            )
+            for p in pbar:
+                current_postfix = f"Pert: {p}"
+                pbar.set_postfix_str(f"{current_postfix:<{POSTFIX_WIDTH}.{POSTFIX_WIDTH}}")
+
                 idxs = grp_idx[pert_names_all[grp_idx] == p]
                 if len(idxs) == 0:
                     continue
