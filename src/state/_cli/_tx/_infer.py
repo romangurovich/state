@@ -393,9 +393,9 @@ def run_tx_infer(args: argparse.Namespace):
                     print(f"Group '{g}': no control cells available anywhere; leaving rows unchanged.")
                 continue
 
-            # --- NEW: iterate by perturbation so each forward pass is homogeneous ---
+            # --- iterate by perturbation so each forward pass is homogeneous ---
             grp_perts = np.unique(pert_names_all[grp_idx])
-            for p in grp_perts:
+            for p in tqdm(grp_perts, desc=f"Group {g}", disable=args.quiet):
                 idxs = grp_idx[pert_names_all[grp_idx] == p]
                 if len(idxs) == 0:
                     continue
