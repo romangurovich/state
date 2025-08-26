@@ -1,16 +1,14 @@
+import logging
 import time
 from typing import Any, Dict, Optional
-import logging
-from typing_extensions import AnyStr
+
+import torch
+from lightning import LightningModule, Trainer
+from lightning.fabric.utilities.throughput import Throughput, measure_flops
+from lightning.pytorch.callbacks import Callback
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-import torch
-from lightning import Trainer
-from lightning import LightningModule
-from lightning.pytorch.callbacks import Callback
-from lightning.fabric.utilities.throughput import Throughput, measure_flops
 
 
 class ModelFLOPSUtilizationCallback(Callback):
@@ -112,7 +110,9 @@ class ModelFLOPSUtilizationCallback(Callback):
         model = pl_module
 
         # Measure FLOPs using a single callable that runs training_step and backward
-        forward_fn = lambda: self._trainstep_forward_backward(model, batch)
+        def forward_fn():
+            return self._trainstep_forward_backward(model, batch)
+        
         self._flops_per_batch = int(measure_flops(model, forward_fn=forward_fn))
         print(f"ModelFLOPSUtilizationCallback: Measured FLOPs per batch: {self._flops_per_batch}")
         pl_module.log("flops_per_batch", self._flops_per_batch, prog_bar=False, on_step=True, on_epoch=False)
@@ -135,7 +135,7 @@ class ModelFLOPSUtilizationCallback(Callback):
     def on_train_batch_end(self, trainer: Trainer, pl_module: Any, outputs: Any, batch: dict, batch_idx: int) -> None:
         if self._train_start_time is None or self._throughput is None:
             return
-        
+
         samples = self._infer_batch_size(batch)
 
         # Update cumulative totals since training start
@@ -151,16 +151,16 @@ class ModelFLOPSUtilizationCallback(Callback):
             self._cumulative_time = time.time() - self._train_start_time
 
             if batch_idx == self.logging_interval:
-                flops = self._flops_per_batch * (self.logging_interval + 1) # type: ignore
+                flops = self._flops_per_batch * (self.logging_interval + 1)  # type: ignore
             else:
-                flops = self._flops_per_batch * self.logging_interval # type: ignore
+                flops = self._flops_per_batch * self.logging_interval  # type: ignore
 
             # Update throughput tracker
             self._throughput.update(
                 time=self._cumulative_time,
                 batches=self._cumulative_batches,
                 samples=self._cumulative_samples,
-                flops=flops, # type: ignore
+                flops=flops,  # type: ignore
             )
 
             metrics: Dict[str, float] = self._throughput.compute()

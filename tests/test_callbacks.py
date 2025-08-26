@@ -131,19 +131,19 @@ def test_mfu_is_calculated_correctly(fake_model, fake_batch):
 
     # Simulate training with 1 second per batch
     start_time = mfu.time.time()
-    
+
     for batch_idx in range(16):
         if batch_idx == 0:
             cb.on_train_batch_start(cast(Any, trainer), fake_model, fake_batch, batch_idx=batch_idx)
             cb._train_start_time = start_time
         else:
             cb.on_train_batch_start(cast(Any, trainer), fake_model, fake_batch, batch_idx=batch_idx)
-        
+
         # Mock time progression
         current_time = start_time + (batch_idx + 1) * 1.0
         original_time = mfu.time.time
         mfu.time.time = lambda: current_time
-        
+
         try:
             cb.on_train_batch_end(cast(Any, trainer), fake_model, outputs=None, batch=fake_batch, batch_idx=batch_idx)
         finally:
@@ -152,13 +152,13 @@ def test_mfu_is_calculated_correctly(fake_model, fake_batch):
     # Verify MFU was logged with reasonable values
     mfu_logs = [e for e in fake_model.logged if e["name"] == "mfu (%)"]
     assert len(mfu_logs) >= 1
-    
+
     for mfu_log in mfu_logs:
         assert 50 <= mfu_log["value"] <= 150
 
     # Verify samples per second was logged with reasonable values
     sps_logs = [e for e in fake_model.logged if e["name"] == "cell_sets_per_sec"]
     assert len(sps_logs) >= 1
-    
+
     for sps_log in sps_logs:
         assert 2 <= sps_log["value"] <= 6
