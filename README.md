@@ -9,6 +9,13 @@
 - Model evaluation framework: [cell-eval](https://github.com/ArcInstitute/cell-eval)
 - Dataloaders and preprocessing: [cell-load](https://github.com/ArcInstitute/cell-load)
 
+## Getting started
+
+- Train an ST model for genetic perturbation prediction using the Replogle-Nadig dataset: [Colab](https://colab.research.google.com/drive/1Ih-KtTEsPqDQnjTh6etVv_f-gRAA86ZN)
+- Perform inference using an ST model trained on Tahoe-100M: [Colab](https://colab.research.google.com/drive/1bq5v7hixnM-tZHwNdgPiuuDo6kuiwLKJ)
+- Embed and annotate a new dataset using SE: [Colab](https://colab.research.google.com/drive/1uJinTJLSesJeot0mP254fQpSxGuDEsZt)
+- Train STATE for the Virtual Cell Challenge: [Colab](https://colab.research.google.com/drive/1QKOtYP7bMpdgDJEipDxaJqOchv7oQ-_l)
+
 ## Installation
 
 ### Installation from PyPI
