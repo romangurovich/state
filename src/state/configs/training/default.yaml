@@ -10,9 +10,9 @@ gradient_clip_val: 10 # 0 means no clipping
 loss_fn: mse
 devices: 1  # Number of GPUs to use for training
 strategy: auto  # DDP strategy for multi-GPU training
-use_mfu: false
+use_mfu: true
 mfu_kwargs:
     available_flops: 60e12
     use_backward: true
-    logging_interval: 5
-    window_size: 20
+    logging_interval: 10
+    window_size: 2
