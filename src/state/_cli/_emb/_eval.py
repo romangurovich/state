@@ -1,19 +1,4 @@
 import argparse as ap
-import os
-import yaml
-import scanpy as sc
-import pandas as pd
-import numpy as np
-import torch
-from pathlib import Path
-from tqdm import tqdm
-from omegaconf import OmegaConf, DictConfig
-
-from ...emb.nn.model import StateEmbeddingModel
-from ...emb.utils import compute_gene_overlap_cross_pert, get_embedding_cfg, get_precision_config
-from ...emb.data import create_dataloader
-from ...emb.inference import Inference
-
 
 def add_arguments_eval(parser: ap.ArgumentParser):
     """Add arguments for embedding evaluation CLI."""
@@ -80,6 +65,22 @@ def run_emb_eval(args):
     """
     Run embedding evaluation.
     """
+    import os
+    import yaml
+    import scanpy as sc
+    import pandas as pd
+    import numpy as np
+    import torch
+    from pathlib import Path
+    from tqdm import tqdm
+    from omegaconf import OmegaConf, DictConfig
+
+    from ...emb.nn.model import StateEmbeddingModel
+    from ...emb.utils import compute_gene_overlap_cross_pert, get_embedding_cfg, get_precision_config
+    from ...emb.data import create_dataloader
+    from ...emb.inference import Inference
+
+
     print(f"Loading checkpoint: {args.checkpoint}")
     print(f"Loading AnnData: {args.adata}")
     print(f"Perturbation column: {args.pert_col}")

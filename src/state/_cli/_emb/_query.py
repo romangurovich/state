@@ -1,9 +1,4 @@
 import argparse as ap
-import logging
-import pandas as pd
-import anndata
-import numpy as np
-from pathlib import Path
 
 def add_arguments_query(parser: ap.ArgumentParser):
     """Add arguments for state embedding query CLI."""
@@ -19,6 +14,13 @@ def add_arguments_query(parser: ap.ArgumentParser):
                        help="Batch size for query operations")
 
 def run_emb_query(args: ap.ArgumentParser):
+    import logging
+    import pandas as pd
+    import anndata
+    import numpy as np
+    from pathlib import Path
+
+
     """
     Query a LanceDB database for similar cells.
     """

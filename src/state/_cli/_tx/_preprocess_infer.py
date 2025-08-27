@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 import argparse as ap
-import logging
 from typing import Optional
-
-import anndata as ad
-import numpy as np
-from scipy.sparse import issparse, csc_matrix
-# tqdm removed from the hot path; the main speed-up is vectorization, not progress bars.
-
-logger = logging.getLogger(__name__)
-
 
 def add_arguments_preprocess_infer(parser: ap.ArgumentParser):
     """Add arguments for the preprocess_infer subcommand."""
@@ -80,6 +71,16 @@ def run_tx_preprocess_infer(
     This creates a 'control template' where all non-control cells receive expression
     sampled (with replacement) from control cells, while keeping original annotations.
     """
+    import logging
+
+    import anndata as ad
+    import numpy as np
+    from scipy.sparse import issparse, csc_matrix
+    # tqdm removed from the hot path; the main speed-up is vectorization, not progress bars.
+
+    logger = logging.getLogger(__name__)
+
+
     print(f"Loading AnnData from {adata_path}")
     adata = ad.read_h5ad(adata_path)
 

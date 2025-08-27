@@ -135,7 +135,6 @@ class Inference:
             precision = get_precision_config(device_type=device_type)
             with torch.autocast(device_type=device_type, dtype=precision):
                 for i, batch in enumerate(dataloader):
-                    torch.cuda.empty_cache()
                     _, _, _, emb, ds_emb = self.model._compute_embedding_for_batch(batch)
                     embeddings = emb.detach().cpu().float().numpy()
 
@@ -154,7 +153,6 @@ class Inference:
         lancedb_path: str | None = None,
         update_lancedb: bool = False,
         lancedb_batch_size: int = 1000,
-        gene_column: str = "gene_name",
     ):
         shape_dict = self.__load_dataset_meta(input_adata_path)
         adata = anndata.read_h5ad(input_adata_path)
@@ -163,6 +161,9 @@ class Inference:
 
         # Convert to CSR format if needed
         adata = self._convert_to_csr(adata)
+
+        # Auto-detect the best gene column
+        gene_column: Optional[str] = self._auto_detect_gene_column(adata)
 
         device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
         precision = get_precision_config(device_type=device_type)
@@ -223,9 +224,48 @@ class Inference:
         """Convert the adata.X matrix to CSR format if it's not already."""
         from scipy.sparse import csr_matrix, issparse
         if issparse(adata.X) and not isinstance(adata.X, csr_matrix):
-            log.info(f"Converting {type(adata.X).__name__} to csr_matrix format")
+            print(f"Converting {type(adata.X).__name__} to csr_matrix format")
             adata.X = csr_matrix(adata.X)
         return adata
+
+    def _auto_detect_gene_column(self, adata):
+        """Auto-detect the gene column with highest overlap with protein embeddings."""
+        if self.protein_embeds is None:
+            log.warning("No protein embeddings available for auto-detection, using index")
+            return None
+        
+        protein_genes = set(self.protein_embeds.keys())
+        best_column = None
+        best_overlap = 0
+        best_overlap_pct = 0
+        
+        # Check index first
+        if hasattr(adata.var, 'index'):
+            index_genes = set(adata.var.index)
+            overlap = len(protein_genes.intersection(index_genes))
+            overlap_pct = overlap / len(index_genes) if len(index_genes) > 0 else 0
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_overlap_pct = overlap_pct
+                best_column = None  # None means use index
+        
+        # Check all columns in var
+        for col in adata.var.columns:
+            if adata.var[col].dtype == 'object' or adata.var[col].dtype.name.startswith('str'):
+                col_genes = set(adata.var[col].dropna().astype(str))
+                overlap = len(protein_genes.intersection(col_genes))
+                overlap_pct = overlap / len(col_genes) if len(col_genes) > 0 else 0
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_overlap_pct = overlap_pct
+                    best_column = col
+        
+        if best_column is None:
+            log.info(f"Auto-detected gene column: var.index (overlap: {best_overlap}/{len(protein_genes)} protein embeddings, {best_overlap_pct:.1%} of genes)")
+        else:
+            log.info(f"Auto-detected gene column: var.{best_column} (overlap: {best_overlap}/{len(protein_genes)} protein embeddings, {best_overlap_pct:.1%} of genes)")
+        
+        return best_column
 
     def decode_from_file(self, adata_path, emb_key: str, read_depth=None, batch_size=64):
         adata = anndata.read_h5ad(adata_path)

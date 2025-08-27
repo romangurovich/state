@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import functools
 import numpy as np
 
-from typing import Dict
+from typing import Dict, Optional
 
 from torch.utils.data import DataLoader
 from .. import utils
@@ -32,7 +32,7 @@ def create_dataloader(
     sentence_collator=None,
     protein_embeds=None,
     precision=None,
-    gene_column: str = "gene_name",
+    gene_column: Optional[str] = "gene_name",
 ):
     """
     Expected to be used for inference
@@ -175,7 +175,7 @@ class H5adSentenceDataset(data.Dataset):
 
 class FilteredGenesCounts(H5adSentenceDataset):
     def __init__(
-        self, cfg, test=False, datasets=None, shape_dict=None, adata=None, adata_name=None, protein_embeds=None, gene_column: str = "gene_name"
+        self, cfg, test=False, datasets=None, shape_dict=None, adata=None, adata_name=None, protein_embeds=None, gene_column: Optional[str] = "gene_name"
     ) -> None:
         super(FilteredGenesCounts, self).__init__(cfg, test, datasets, shape_dict, adata, adata_name)
         self.valid_gene_index = {}
@@ -219,31 +219,28 @@ class FilteredGenesCounts(H5adSentenceDataset):
         esm_data = self.protein_embeds or torch.load(emb_cfg['all_embeddings'], weights_only=False)
         valid_genes_list = list(esm_data.keys())
         for name in self.datasets:
-            if not utils.is_valid_uuid(
-                name
-            ):  # had to add this in for now as cellxgene h5ad fles don't have gene_name object but tahoe does
-                if adata is None:
-                    a = self.dataset_file(name)
-                    try:
-                        gene_names = np.array(
-                            [g.decode("utf-8") for g in a[f"/var/{self.gene_column}"][:]]
-                        )  # Decode byte strings
-                    except:
-                        gene_categories = a[f"/var/{self.gene_column}/categories"][:]
-                        gene_codes = np.array(a[f"/var/{self.gene_column}/codes"][:])
-                        gene_names = np.array([g.decode("utf-8") for g in gene_categories[gene_codes]])
-                    valid_mask = np.isin(gene_names, valid_genes_list)
-                    self.valid_gene_index[name] = valid_mask
-                else:
-                    gene_names = np.array(adata.var_names)
+            if adata is None:
+                a = self.dataset_file(name)
+                try:
+                    gene_names = np.array(
+                        [g.decode("utf-8") for g in a[f"/var/{self.gene_column}"][:]]
+                    )  # Decode byte strings
+                except:
+                    gene_categories = a[f"/var/{self.gene_column}/categories"][:]
+                    gene_codes = np.array(a[f"/var/{self.gene_column}/codes"][:])
+                    gene_names = np.array([g.decode("utf-8") for g in gene_categories[gene_codes]])
+                valid_mask = np.isin(gene_names, valid_genes_list)
+                self.valid_gene_index[name] = valid_mask
+            else:
+                gene_names = np.array(adata.var_names)
+                valid_mask = np.isin(gene_names, valid_genes_list)
+
+                if not valid_mask.any():
+                    # none of the genes were valid, probably ensembl id's
+                    gene_names = adata.var[self.gene_column].values
                     valid_mask = np.isin(gene_names, valid_genes_list)
 
-                    if not valid_mask.any():
-                        # none of the genes were valid, probably ensembl id's
-                        gene_names = adata.var[self.gene_column].values
-                        valid_mask = np.isin(gene_names, valid_genes_list)
-
-                    self.valid_gene_index[name] = valid_mask
+                self.valid_gene_index[name] = valid_mask
 
     def __getitem__(self, idx):
         counts, idx, dataset, dataset_num = super().__getitem__(idx)

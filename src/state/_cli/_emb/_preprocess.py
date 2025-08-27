@@ -1,12 +1,7 @@
 import argparse as ap
 import os
-import logging
-import sys
-import pandas as pd
-import torch
-from omegaconf import OmegaConf
-from tqdm import tqdm
 import h5py as h5
+from omegaconf import OmegaConf
 
 def add_arguments_preprocess(parser: ap.ArgumentParser):
     """Add arguments for embedding preprocessing CLI."""
@@ -40,6 +35,16 @@ def run_emb_preprocess(args):
     """
     Preprocess datasets and embeddings to create a new profile.
     """
+
+    import os
+    import logging
+    import sys
+    import pandas as pd
+    import torch
+    from omegaconf import OmegaConf
+    from tqdm import tqdm
+    import h5py as h5
+
     log = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
@@ -125,8 +130,8 @@ def run_emb_preprocess(args):
                 dataset_info[name]["mapping"] = torch.tensor(mapping, dtype=torch.long)
                 dataset_info[name]["mask"] = torch.tensor(mask, dtype=torch.bool)
                 all_genes.update(genes)
-            except:
-                print(f"Skipping: {path}")
+            except Exception as e:
+                print(f"Skipping {path}: {e}")
 
     process_df(train_df, "training")
     process_df(val_df, "validation")
@@ -272,7 +277,7 @@ def create_onehot_embeddings(all_genes):
 
 def create_updated_csv(df, dataset_info, out_dir, filename):
     """Add num_cells, num_genes, groupid_for_de and save."""
-    out = df.copy()
+    out = df[df['names'].isin(dataset_info.keys())].copy()
     out['num_cells'] = out['names'].map(lambda n: dataset_info[n]['num_cells'])
     out['num_genes'] = out['names'].map(lambda n: dataset_info[n]['num_genes'])
     out['groupid_for_de'] = 'leiden'

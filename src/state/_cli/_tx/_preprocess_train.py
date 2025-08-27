@@ -1,11 +1,4 @@
 import argparse as ap
-import logging
-
-import anndata as ad
-import scanpy as sc
-
-logger = logging.getLogger(__name__)
-
 
 def add_arguments_preprocess_train(parser: ap.ArgumentParser):
     """Add arguments for the preprocess_train subcommand."""
@@ -38,6 +31,14 @@ def run_tx_preprocess_train(adata_path: str, output_path: str, num_hvgs: int):
         output_path: Path to save preprocessed AnnData file
         num_hvgs: Number of highly variable genes to select
     """
+    import logging
+
+    import anndata as ad
+    import scanpy as sc
+
+    logger = logging.getLogger(__name__)
+
+
     logger.info(f"Loading AnnData from {adata_path}")
     adata = ad.read_h5ad(adata_path)
     
