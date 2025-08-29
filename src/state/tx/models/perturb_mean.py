@@ -259,9 +259,7 @@ class PerturbMeanPerturbationModel(PerturbationModel):
             for p_name, offset_np in checkpoint["pert_mean_offsets"].items():
                 loaded_offsets[p_name] = torch.tensor(offset_np, dtype=torch.float32)
             self.pert_mean_offsets = loaded_offsets
-            logger.info(
-                f"PerturbMean: Loaded offsets for {len(self.pert_mean_offsets)} perturbations from checkpoint."
-            )
+            logger.info(f"PerturbMean: Loaded offsets for {len(self.pert_mean_offsets)} perturbations from checkpoint.")
         else:
             logger.warning("PerturbMean: No pert_mean_offsets found in checkpoint. All offsets set to zero.")
             self.pert_mean_offsets = {}

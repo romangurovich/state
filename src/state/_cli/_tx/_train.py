@@ -6,7 +6,7 @@ from omegaconf import DictConfig, OmegaConf
 def add_arguments_train(parser: ap.ArgumentParser):
     # Allow remaining args to be passed through to Hydra
     parser.add_argument("hydra_overrides", nargs="*", help="Hydra configuration overrides (e.g., data.batch_size=32)")
-    # Add custom help handler 
+    # Add custom help handler
     parser.add_argument("--help", "-h", action="store_true", help="Show configuration help with all parameters")
 
 
@@ -215,7 +215,7 @@ def run_tx_train(cfg: DictConfig):
         accelerator = "gpu"
     else:
         accelerator = "cpu"
-    
+
     # Decide on trainer params
     trainer_kwargs = dict(
         accelerator=accelerator,
@@ -230,7 +230,12 @@ def run_tx_train(cfg: DictConfig):
     )
 
     # If it's SimpleSum, override to do exactly 1 epoch, ignoring `max_steps`.
-    if cfg["model"]["name"].lower() == "celltypemean" or cfg["model"]["name"].lower() == "globalsimplesum" or cfg["model"]["name"].lower() == "perturb_mean" or cfg["model"]["name"].lower() == "context_mean":
+    if (
+        cfg["model"]["name"].lower() == "celltypemean"
+        or cfg["model"]["name"].lower() == "globalsimplesum"
+        or cfg["model"]["name"].lower() == "perturb_mean"
+        or cfg["model"]["name"].lower() == "context_mean"
+    ):
         trainer_kwargs["max_epochs"] = 1  # do exactly one epoch
         # delete max_steps to avoid conflicts
         del trainer_kwargs["max_steps"]
@@ -267,9 +272,11 @@ def run_tx_train(cfg: DictConfig):
         # Check if output_space differs between current config and checkpoint
         checkpoint_output_space = checkpoint.get("hyper_parameters", {}).get("output_space", "gene")
         current_output_space = cfg["data"]["kwargs"]["output_space"]
-        
+
         if checkpoint_output_space != current_output_space:
-            print(f"Output space mismatch: checkpoint has '{checkpoint_output_space}', current config has '{current_output_space}'")
+            print(
+                f"Output space mismatch: checkpoint has '{checkpoint_output_space}', current config has '{current_output_space}'"
+            )
             print("Creating new decoder for the specified output space...")
 
             if cfg["model"]["kwargs"].get("gene_decoder_bool", True) == False:
@@ -280,7 +287,7 @@ def run_tx_train(cfg: DictConfig):
                     new_gene_dim = var_dims.get("hvg_dim", 2000)
                 else:  # output_space == "all"
                     new_gene_dim = var_dims.get("gene_dim", 2000)
-                
+
                 new_decoder_cfg = dict(
                     latent_dim=var_dims["output_dim"],
                     gene_dim=new_gene_dim,
@@ -288,7 +295,7 @@ def run_tx_train(cfg: DictConfig):
                     dropout=cfg["model"]["kwargs"].get("decoder_dropout", 0.1),
                     residual_decoder=cfg["model"]["kwargs"].get("residual_decoder", False),
                 )
-                
+
                 # Update the model's decoder_cfg and rebuild decoder
                 model.decoder_cfg = new_decoder_cfg
                 model._build_decoder()

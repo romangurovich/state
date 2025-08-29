@@ -2,6 +2,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
+
 def add_arguments_infer(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--checkpoint",
@@ -109,6 +110,7 @@ def run_tx_infer(args: argparse.Namespace):
         """Return a dense numpy array for a variety of AnnData .X backends."""
         try:
             import scipy.sparse as sp
+
             if sp.issparse(mat):
                 return mat.toarray()
         except Exception:
@@ -137,6 +139,7 @@ def run_tx_infer(args: argparse.Namespace):
             pass
         try:
             import numpy as _np
+
             if isinstance(v, _np.ndarray):
                 if v.ndim == 1:
                     return int(v.argmax())
@@ -163,24 +166,24 @@ def run_tx_infer(args: argparse.Namespace):
         batch = {
             "ctrl_cell_emb": X_batch,
             "pert_emb": pert_onehots.to(device),  # [T, pert_dim] (same row repeated)
-            "pert_name": pert_names,              # list[str], all identical
+            "pert_name": pert_names,  # list[str], all identical
         }
         if batch_indices is not None:
             batch["batch"] = batch_indices.to(device)  # [T]
         return batch
 
     def pad_adata_with_tsv(
-        adata: "sc.AnnData", 
-        tsv_path: str, 
-        pert_col: str, 
+        adata: "sc.AnnData",
+        tsv_path: str,
+        pert_col: str,
         control_pert: str,
         rng: np.random.RandomState,
-        quiet: bool = False
+        quiet: bool = False,
     ) -> "sc.AnnData":
         """
         Pad AnnData with additional perturbation cells by copying random control cells
         and updating their perturbation labels according to the TSV specification.
-        
+
         Args:
             adata: Input AnnData object
             tsv_path: Path to TSV file with 'perturbation' and 'num_cells' columns
@@ -188,115 +191,107 @@ def run_tx_infer(args: argparse.Namespace):
             control_pert: Label for control perturbation
             rng: Random number generator for sampling
             quiet: Whether to suppress logging
-            
+
         Returns:
             AnnData object with padded cells
         """
         # Load TSV file
         if not os.path.exists(tsv_path):
             raise FileNotFoundError(f"TSV file not found: {tsv_path}")
-        
+
         try:
-            tsv_df = pd.read_csv(tsv_path, sep='\t')
+            tsv_df = pd.read_csv(tsv_path, sep="\t")
         except Exception as e:
             raise ValueError(f"Error reading TSV file {tsv_path}: {e}")
-        
+
         # Validate TSV format
-        required_cols = ['perturbation', 'num_cells']
+        required_cols = ["perturbation", "num_cells"]
         missing_cols = [col for col in required_cols if col not in tsv_df.columns]
         if missing_cols:
-            raise ValueError(f"TSV file missing required columns: {missing_cols}. Found columns: {list(tsv_df.columns)}")
-        
+            raise ValueError(
+                f"TSV file missing required columns: {missing_cols}. Found columns: {list(tsv_df.columns)}"
+            )
+
         # Find control cells
-        ctl_mask = (adata.obs[pert_col].astype(str) == str(control_pert))
+        ctl_mask = adata.obs[pert_col].astype(str) == str(control_pert)
         control_indices = np.where(ctl_mask)[0]
-        
+
         if len(control_indices) == 0:
             raise ValueError(f"No control cells found with perturbation '{control_pert}' in column '{pert_col}'")
-        
+
         if not quiet:
             print(f"Found {len(control_indices)} control cells for padding")
-        
+
         # Collect cells to add
         new_cells_data = []
         total_to_add = 0
-        
+
         for _, row in tsv_df.iterrows():
-            pert_name = str(row['perturbation'])
-            num_cells = int(row['num_cells'])
+            pert_name = str(row["perturbation"])
+            num_cells = int(row["num_cells"])
             total_to_add += num_cells
-            
+
             if num_cells <= 0:
                 continue
-                
+
             # Sample control cells with replacement
             sampled_indices = rng.choice(control_indices, size=num_cells, replace=True)
-            
+
             for idx in sampled_indices:
-                new_cells_data.append({
-                    'original_index': idx,
-                    'new_perturbation': pert_name
-                })
-        
+                new_cells_data.append({"original_index": idx, "new_perturbation": pert_name})
+
         if len(new_cells_data) == 0:
             if not quiet:
                 print("No cells to add from TSV file")
             return adata
-        
+
         if not quiet:
             print(f"Adding {total_to_add} cells from TSV specification")
-        
+
         # Create new AnnData with padded cells
         original_n_obs = adata.n_obs
         new_n_obs = original_n_obs + len(new_cells_data)
-        
+
         # Copy X data
-        if hasattr(adata.X, 'toarray'):  # sparse matrix
-            new_X = np.vstack([adata.X.toarray(), adata.X[np.array([cell['original_index'] for cell in new_cells_data])].toarray()])
+        if hasattr(adata.X, "toarray"):  # sparse matrix
+            new_X = np.vstack(
+                [adata.X.toarray(), adata.X[np.array([cell["original_index"] for cell in new_cells_data])].toarray()]
+            )
         else:  # dense matrix
-            new_X = np.vstack([adata.X, adata.X[np.array([cell['original_index'] for cell in new_cells_data])]])
-        
+            new_X = np.vstack([adata.X, adata.X[np.array([cell["original_index"] for cell in new_cells_data])]])
+
         # Copy obs data
         new_obs = adata.obs.copy()
         for i, cell_data in enumerate(new_cells_data):
-            orig_idx = cell_data['original_index']
-            new_pert = cell_data['new_perturbation']
-            
+            orig_idx = cell_data["original_index"]
+            new_pert = cell_data["new_perturbation"]
+
             # Copy the original control cell's metadata
             new_row = adata.obs.iloc[orig_idx].copy()
             # Update perturbation label
             new_row[pert_col] = new_pert
-            
+
             new_obs.loc[original_n_obs + i] = new_row
-        
+
         # Copy obsm data
         new_obsm = {}
         for key, matrix in adata.obsm.items():
-            padded_matrix = np.vstack([
-                matrix,
-                matrix[np.array([cell['original_index'] for cell in new_cells_data])]
-            ])
+            padded_matrix = np.vstack([matrix, matrix[np.array([cell["original_index"] for cell in new_cells_data])]])
             new_obsm[key] = padded_matrix
-        
+
         # Copy varm, uns, var (unchanged)
         new_varm = adata.varm.copy()
         new_uns = adata.uns.copy()
         new_var = adata.var.copy()
-        
+
         # Create new AnnData object
         import scanpy as sc
-        new_adata = sc.AnnData(
-            X=new_X,
-            obs=new_obs,
-            var=new_var,
-            obsm=new_obsm,
-            varm=new_varm,
-            uns=new_uns
-        )
-        
+
+        new_adata = sc.AnnData(X=new_X, obs=new_obs, var=new_var, obsm=new_obsm, varm=new_varm, uns=new_uns)
+
         if not quiet:
             print(f"Padded AnnData: {original_n_obs} -> {new_n_obs} cells")
-        
+
         return new_adata
 
     # -----------------------
@@ -334,9 +329,12 @@ def run_tx_infer(args: argparse.Namespace):
             ct_from_cfg = cfg["data"]["kwargs"].get("cell_type_key", None)
         except Exception:
             pass
-        guess = pick_first_present(sc.read_h5ad(args.adata), candidates=[
-            ct_from_cfg, "cell_type", "celltype", "cellType", "ctype", "celltype_col"
-        ] if ct_from_cfg else ["cell_type", "celltype", "cellType", "ctype", "celltype_col"])
+        guess = pick_first_present(
+            sc.read_h5ad(args.adata),
+            candidates=[ct_from_cfg, "cell_type", "celltype", "cellType", "ctype", "celltype_col"]
+            if ct_from_cfg
+            else ["cell_type", "celltype", "cellType", "ctype", "celltype_col"],
+        )
         args.celltype_col = guess
     if not args.quiet:
         print(f"Grouping by cell type column: {args.celltype_col if args.celltype_col else '(not found; no grouping)'}")
@@ -402,17 +400,17 @@ def run_tx_infer(args: argparse.Namespace):
     if args.tsv:
         if not args.quiet:
             print(f"==> TSV padding mode: loading {args.tsv}")
-        
+
         # Initialize RNG for padding (separate from inference RNG for reproducibility)
         pad_rng = np.random.RandomState(args.seed)
-        
+
         adata = pad_adata_with_tsv(
             adata=adata,
             tsv_path=args.tsv,
             pert_col=args.pert_col,
             control_pert=control_pert,
             rng=pad_rng,
-            quiet=args.quiet
+            quiet=args.quiet,
         )
 
     # optional filter by cell types
@@ -436,7 +434,9 @@ def run_tx_infer(args: argparse.Namespace):
         writes_to = (".obsm", args.embed_key)  # write predictions to obsm[embed_key]
 
     if not args.quiet:
-        print(f"Using {'adata.X' if args.embed_key is None else f'adata.obsm[{args.embed_key!r}]'} as input features: shape {X_in.shape}")
+        print(
+            f"Using {'adata.X' if args.embed_key is None else f'adata.obsm[{args.embed_key!r}]'} as input features: shape {X_in.shape}"
+        )
 
     # pick pert names; ensure they are strings
     if args.pert_col not in adata.obs:
@@ -476,7 +476,9 @@ def run_tx_infer(args: argparse.Namespace):
                         misses += 1
                         idxs[i] = 0  # fallback to zero
                 if misses and not args.quiet:
-                    print(f"Warning: {misses} / {len(raw_labels)} batch labels not found in saved mapping; using index 0 as fallback.")
+                    print(
+                        f"Warning: {misses} / {len(raw_labels)} batch labels not found in saved mapping; using index 0 as fallback."
+                    )
                 batch_indices_all = idxs
         else:
             if not args.quiet:
@@ -489,7 +491,7 @@ def run_tx_infer(args: argparse.Namespace):
     rng = np.random.RandomState(args.seed)
 
     # Identify control vs non-control
-    ctl_mask = (pert_names_all == str(control_pert))
+    ctl_mask = pert_names_all == str(control_pert)
     n_controls = int(ctl_mask.sum())
     n_total = adata.n_obs
     n_nonctl = n_total - n_controls
@@ -518,7 +520,7 @@ def run_tx_infer(args: argparse.Namespace):
     def group_control_indices(group_name: str) -> np.ndarray:
         if group_name == "__ALL__":
             return all_control_indices
-        grp_mask = (group_labels == group_name)
+        grp_mask = group_labels == group_name
         grp_ctl = np.where(grp_mask & ctl_mask)[0]
         return grp_ctl if len(grp_ctl) > 0 else all_control_indices
 
@@ -602,8 +604,14 @@ def run_tx_infer(args: argparse.Namespace):
                     batch_out = model.predict_step(batch, batch_idx=0, padded=False)
 
                     # 5) Choose output to write
-                    if writes_to[0] == ".X" and ("pert_cell_counts_preds" in batch_out) and (batch_out["pert_cell_counts_preds"] is not None):
-                        preds = batch_out["pert_cell_counts_preds"].detach().cpu().numpy().astype(np.float32)  # [win, G]
+                    if (
+                        writes_to[0] == ".X"
+                        and ("pert_cell_counts_preds" in batch_out)
+                        and (batch_out["pert_cell_counts_preds"] is not None)
+                    ):
+                        preds = (
+                            batch_out["pert_cell_counts_preds"].detach().cpu().numpy().astype(np.float32)
+                        )  # [win, G]
                     else:
                         preds = batch_out["preds"].detach().cpu().numpy().astype(np.float32)  # [win, D]
 

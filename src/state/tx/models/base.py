@@ -154,7 +154,7 @@ class PerturbationModel(ABC, LightningModule):
         super().__init__()
         self.decoder_cfg = decoder_cfg
         self.save_hyperparameters()
-        self.gene_decoder_bool = kwargs.get("gene_decoder_bool", True) 
+        self.gene_decoder_bool = kwargs.get("gene_decoder_bool", True)
 
         # Core architecture settings
         self.input_dim = input_dim
@@ -209,7 +209,9 @@ class PerturbationModel(ABC, LightningModule):
         so that parameter shapes match and load_state_dict succeeds.
         """
         # Check if decoder_cfg was already set externally (e.g., by training script for output_space mismatch)
-        decoder_already_configured = hasattr(self, '_decoder_externally_configured') and self._decoder_externally_configured
+        decoder_already_configured = (
+            hasattr(self, "_decoder_externally_configured") and self._decoder_externally_configured
+        )
 
         if self.gene_decoder_bool == False:
             self.gene_decoder = None

@@ -51,10 +51,10 @@ def load_hydra_config(method: str, overrides: list[str] = None) -> DictConfig:
 def show_hydra_help(method: str):
     """Show Hydra configuration help with all parameters"""
     from omegaconf import OmegaConf
-    
+
     # Load the default config to show structure
     cfg = load_hydra_config(method)
-    
+
     print("Hydra Configuration Help")
     print("=" * 50)
     print(f"Configuration for method: {method}")
@@ -76,19 +76,19 @@ def show_hydra_help(method: str):
     print(f"    uv run state tx train data=custom_data model=custom_model")
     print()
     print("Available config groups:")
-    
+
     # Show available config groups
     import os
     from pathlib import Path
-    
+
     config_dir = Path(__file__).parent / "configs"
     if config_dir.exists():
         for item in config_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('.'):
+            if item.is_dir() and not item.name.startswith("."):
                 configs = [f.stem for f in item.glob("*.yaml")]
                 if configs:
                     print(f"  {item.name}: {', '.join(configs)}")
-    
+
     exit(0)
 
 
@@ -112,7 +112,7 @@ def main():
         case "tx":
             match args.subcommand:
                 case "train":
-                    if hasattr(args, 'help') and args.help:
+                    if hasattr(args, "help") and args.help:
                         # Show Hydra configuration help
                         show_hydra_help("tx")
                     else:

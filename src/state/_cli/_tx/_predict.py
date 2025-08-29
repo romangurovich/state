@@ -294,10 +294,10 @@ def run_tx_predict(args: ap.ArgumentParser):
 
     # Build pandas DataFrame for obs and var
     df_dict = {
-            data_module.pert_col: all_pert_names,
-            data_module.cell_type_key: all_celltypes,
-            data_module.batch_col: all_gem_groups,
-        }
+        data_module.pert_col: all_pert_names,
+        data_module.cell_type_key: all_celltypes,
+        data_module.batch_col: all_gem_groups,
+    }
 
     if len(all_pert_barcodes) > 0:
         df_dict["pert_cell_barcode"] = all_pert_barcodes

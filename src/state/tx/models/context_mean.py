@@ -218,9 +218,7 @@ class ContextMeanPerturbationModel(PerturbationModel):
             for ct, mean_np in checkpoint["celltype_pert_means"].items():
                 loaded_means[ct] = torch.tensor(mean_np, dtype=torch.float32)
             self.celltype_pert_means = loaded_means
-            logger.info(
-                f"ContextMean: Loaded means for {len(self.celltype_pert_means)} cell types from checkpoint."
-            )
+            logger.info(f"ContextMean: Loaded means for {len(self.celltype_pert_means)} cell types from checkpoint.")
         else:
             logger.warning("ContextMean: No celltype_pert_means found in checkpoint. All means set to empty.")
             self.celltype_pert_means = {}

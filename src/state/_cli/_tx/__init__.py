@@ -6,7 +6,14 @@ from ._preprocess_infer import add_arguments_preprocess_infer, run_tx_preprocess
 from ._preprocess_train import add_arguments_preprocess_train, run_tx_preprocess_train
 from ._train import add_arguments_train, run_tx_train
 
-__all__ = ["run_tx_train", "run_tx_predict", "run_tx_infer", "run_tx_preprocess_train", "run_tx_preprocess_infer", "add_arguments_tx"]
+__all__ = [
+    "run_tx_train",
+    "run_tx_predict",
+    "run_tx_infer",
+    "run_tx_preprocess_train",
+    "run_tx_preprocess_infer",
+    "add_arguments_tx",
+]
 
 
 def add_arguments_tx(parser: ap.ArgumentParser):

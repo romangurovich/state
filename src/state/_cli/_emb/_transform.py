@@ -10,10 +10,10 @@ def add_arguments_transform(parser: ap.ArgumentParser):
     parser.add_argument("--output", required=False, help="Path to output embedded anndata file (h5ad)")
     parser.add_argument("--embed-key", default="X_state", help="Name of key to store embeddings")
     parser.add_argument("--lancedb", type=str, help="Path to LanceDB database for vector storage")
-    parser.add_argument("--lancedb-update", action="store_true", 
-                       help="Update existing entries in LanceDB (default: append)")
-    parser.add_argument("--lancedb-batch-size", type=int, default=1000,
-                       help="Batch size for LanceDB operations")
+    parser.add_argument(
+        "--lancedb-update", action="store_true", help="Update existing entries in LanceDB (default: append)"
+    )
+    parser.add_argument("--lancedb-batch-size", type=int, default=1000, help="Batch size for LanceDB operations")
 
 
 def run_emb_transform(args: ap.ArgumentParser):

@@ -2,6 +2,7 @@
 import argparse as ap
 from typing import Optional
 
+
 def add_arguments_preprocess_infer(parser: ap.ArgumentParser):
     """Add arguments for the preprocess_infer subcommand."""
     parser.add_argument(
@@ -20,7 +21,7 @@ def add_arguments_preprocess_infer(parser: ap.ArgumentParser):
         "--control-condition",
         type=str,
         required=True,
-        help='Control condition identifier (e.g., "[(\'DMSO_TF\', 0.0, \'uM\')]")',
+        help="Control condition identifier (e.g., \"[('DMSO_TF', 0.0, 'uM')]\")",
     )
     parser.add_argument(
         "--pert-col",
@@ -80,7 +81,6 @@ def run_tx_preprocess_infer(
 
     logger = logging.getLogger(__name__)
 
-
     print(f"Loading AnnData from {adata_path}")
     adata = ad.read_h5ad(adata_path)
 
@@ -104,9 +104,7 @@ def run_tx_preprocess_infer(
 
     print(f"Found {control_indices.size} control cells out of {adata.n_obs} total cells")
     if control_indices.size == 0:
-        raise ValueError(
-            f"No control cells found with condition '{control_condition}' in column '{pert_col}'"
-        )
+        raise ValueError(f"No control cells found with condition '{control_condition}' in column '{pert_col}'")
 
     # Compute unique perturbations for logging (no heavy loop per perturbation)
     if hasattr(adata.obs[pert_col], "cat"):
