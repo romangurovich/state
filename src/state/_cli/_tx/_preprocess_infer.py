@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 import argparse as ap
-import logging
 from typing import Optional
-
-import anndata as ad
-import numpy as np
-from scipy.sparse import issparse, csc_matrix
-# tqdm removed from the hot path; the main speed-up is vectorization, not progress bars.
-
-logger = logging.getLogger(__name__)
 
 
 def add_arguments_preprocess_infer(parser: ap.ArgumentParser):
@@ -29,7 +21,7 @@ def add_arguments_preprocess_infer(parser: ap.ArgumentParser):
         "--control-condition",
         type=str,
         required=True,
-        help='Control condition identifier (e.g., "[(\'DMSO_TF\', 0.0, \'uM\')]")',
+        help="Control condition identifier (e.g., \"[('DMSO_TF', 0.0, 'uM')]\")",
     )
     parser.add_argument(
         "--pert-col",
@@ -80,6 +72,15 @@ def run_tx_preprocess_infer(
     This creates a 'control template' where all non-control cells receive expression
     sampled (with replacement) from control cells, while keeping original annotations.
     """
+    import logging
+
+    import anndata as ad
+    import numpy as np
+    from scipy.sparse import issparse, csc_matrix
+    # tqdm removed from the hot path; the main speed-up is vectorization, not progress bars.
+
+    logger = logging.getLogger(__name__)
+
     print(f"Loading AnnData from {adata_path}")
     adata = ad.read_h5ad(adata_path)
 
@@ -103,9 +104,7 @@ def run_tx_preprocess_infer(
 
     print(f"Found {control_indices.size} control cells out of {adata.n_obs} total cells")
     if control_indices.size == 0:
-        raise ValueError(
-            f"No control cells found with condition '{control_condition}' in column '{pert_col}'"
-        )
+        raise ValueError(f"No control cells found with condition '{control_condition}' in column '{pert_col}'")
 
     # Compute unique perturbations for logging (no heavy loop per perturbation)
     if hasattr(adata.obs[pert_col], "cat"):

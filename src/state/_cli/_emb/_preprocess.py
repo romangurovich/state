@@ -1,38 +1,24 @@
 import argparse as ap
 import os
-import logging
-import sys
-import pandas as pd
-import torch
-from omegaconf import OmegaConf
-from tqdm import tqdm
 import h5py as h5
+from omegaconf import OmegaConf
+
 
 def add_arguments_preprocess(parser: ap.ArgumentParser):
     """Add arguments for embedding preprocessing CLI."""
     parser.add_argument(
-        "--profile-name", required=True,
-        help="Name for the new profile (used for both embeddings and dataset)"
+        "--profile-name", required=True, help="Name for the new profile (used for both embeddings and dataset)"
+    )
+    parser.add_argument("--train-csv", required=True, help="Path to training CSV file (species,path,names columns)")
+    parser.add_argument("--val-csv", required=True, help="Path to validation CSV file (species,path,names columns)")
+    parser.add_argument("--output-dir", required=True, help="Directory to output generated files")
+    parser.add_argument(
+        "--config-file", default=None, help="Config file to update (default: src/state/configs/state-defaults.yaml)"
     )
     parser.add_argument(
-        "--train-csv", required=True,
-        help="Path to training CSV file (species,path,names columns)"
-    )
-    parser.add_argument(
-        "--val-csv", required=True,
-        help="Path to validation CSV file (species,path,names columns)"
-    )
-    parser.add_argument(
-        "--output-dir", required=True,
-        help="Directory to output generated files"
-    )
-    parser.add_argument(
-        "--config-file", default=None,
-        help="Config file to update (default: src/state/configs/state-defaults.yaml)"
-    )
-    parser.add_argument(
-        "--all-embeddings", default=None,
-        help="Path to existing all_embeddings.pt file (if not provided, creates one-hot embeddings)"
+        "--all-embeddings",
+        default=None,
+        help="Path to existing all_embeddings.pt file (if not provided, creates one-hot embeddings)",
     )
 
 
@@ -40,6 +26,16 @@ def run_emb_preprocess(args):
     """
     Preprocess datasets and embeddings to create a new profile.
     """
+
+    import os
+    import logging
+    import sys
+    import pandas as pd
+    import torch
+    from omegaconf import OmegaConf
+    from tqdm import tqdm
+    import h5py as h5
+
     log = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
@@ -118,15 +114,14 @@ def run_emb_preprocess(args):
                             mapping.append(-1)
                             mask.append(False)
 
-                assert mask.count(False) == mapping.count(-1), \
-                    f"Dataset {name}: mask False count != mapping -1 count"
+                assert mask.count(False) == mapping.count(-1), f"Dataset {name}: mask False count != mapping -1 count"
 
                 dataset_info[name] = {"num_cells": num_cells, "num_genes": num_genes, "genes": genes}
                 dataset_info[name]["mapping"] = torch.tensor(mapping, dtype=torch.long)
                 dataset_info[name]["mask"] = torch.tensor(mask, dtype=torch.bool)
                 all_genes.update(genes)
-            except:
-                print(f"Skipping: {path}")
+            except Exception as e:
+                print(f"Skipping {path}: {e}")
 
     process_df(train_df, "training")
     process_df(val_df, "validation")
@@ -180,14 +175,16 @@ def run_emb_preprocess(args):
 
 def detect_gene_name_strategy(dataset_path, all_embeddings=None):
     """Detect which var field under /var/ holds gene names by max overlap."""
-    with h5.File(dataset_path, 'r') as f:
-        if 'var' not in f:
+    with h5.File(dataset_path, "r") as f:
+        if "var" not in f:
             raise ValueError(f"No var/ in {dataset_path}")
 
         # candidate fields in order of preference
-        fields = [fld for fld in (
-            '_index', 'gene_name', 'gene_symbols', 'feature_name', 'gene_id', 'symbol'
-        ) if fld in f['var']]
+        fields = [
+            fld
+            for fld in ("_index", "gene_name", "gene_symbols", "feature_name", "gene_id", "symbol")
+            if fld in f["var"]
+        ]
         if not fields:
             raise ValueError(f"No gene field found in var/ of {dataset_path}")
 
@@ -200,11 +197,10 @@ def detect_gene_name_strategy(dataset_path, all_embeddings=None):
 
         # for each candidate, count how many genes appear in all_embeddings
         for fld in fields:
-            grp = f['var'][fld]
-            raw = grp['categories'][:] if 'categories' in grp else grp[:]
+            grp = f["var"][fld]
+            raw = grp["categories"][:] if "categories" in grp else grp[:]
             genes = [
-                item.decode('utf-8').upper() if isinstance(item, (bytes, bytearray))
-                else str(item).upper()
+                item.decode("utf-8").upper() if isinstance(item, (bytes, bytearray)) else str(item).upper()
                 for item in raw
             ]
             # count overlap
@@ -220,36 +216,35 @@ def detect_gene_name_strategy(dataset_path, all_embeddings=None):
 
 def extract_dataset_info(dataset_path, gene_field):
     """Extract num_cells, num_genes, and uppercase gene list, handling categorical codes correctly."""
-    with h5.File(dataset_path, 'r') as f:
-        X = f['X']
+    with h5.File(dataset_path, "r") as f:
+        X = f["X"]
         attrs = dict(X.attrs)
-        if 'encoding-type' in attrs:
-            enc = attrs['encoding-type']
-            if enc in ('csr_matrix', 'csc_matrix'):
-                num_cells, num_genes = attrs['shape']
+        if "encoding-type" in attrs:
+            enc = attrs["encoding-type"]
+            if enc in ("csr_matrix", "csc_matrix"):
+                num_cells, num_genes = attrs["shape"]
             else:
                 num_cells, num_genes = X.shape
         else:
-            if hasattr(X, 'shape') and len(X.shape) == 2:
+            if hasattr(X, "shape") and len(X.shape) == 2:
                 num_cells, num_genes = X.shape
             else:
-                num_cells = len(X['indptr']) - 1
-                num_genes = int(X['indices'][:].max()) + 1
+                num_cells = len(X["indptr"]) - 1
+                num_genes = int(X["indices"][:].max()) + 1
 
-        grp = f['var'][gene_field]
+        grp = f["var"][gene_field]
         # Handle categorical with codes
-        if 'categories' in grp and 'codes' in grp:
-            raw_cats = grp['categories'][:]
-            codes = grp['codes'][:]
+        if "categories" in grp and "codes" in grp:
+            raw_cats = grp["categories"][:]
+            codes = grp["codes"][:]
             cats = [
-                c.decode('utf-8').upper() if isinstance(c, (bytes, bytearray)) else str(c).upper()
-                for c in raw_cats
+                c.decode("utf-8").upper() if isinstance(c, (bytes, bytearray)) else str(c).upper() for c in raw_cats
             ]
             genes = [cats[int(code)] for code in codes]
         else:
-            raw = grp['categories'][:] if 'categories' in grp else grp[:]
+            raw = grp["categories"][:] if "categories" in grp else grp[:]
             genes = [
-                item.decode('utf-8').upper() if isinstance(item, (bytes, bytearray)) else str(item).upper()
+                item.decode("utf-8").upper() if isinstance(item, (bytes, bytearray)) else str(item).upper()
                 for item in raw
             ]
 
@@ -272,47 +267,55 @@ def create_onehot_embeddings(all_genes):
 
 def create_updated_csv(df, dataset_info, out_dir, filename):
     """Add num_cells, num_genes, groupid_for_de and save."""
-    out = df.copy()
-    out['num_cells'] = out['names'].map(lambda n: dataset_info[n]['num_cells'])
-    out['num_genes'] = out['names'].map(lambda n: dataset_info[n]['num_genes'])
-    out['groupid_for_de'] = 'leiden'
+    out = df[df["names"].isin(dataset_info.keys())].copy()
+    out["num_cells"] = out["names"].map(lambda n: dataset_info[n]["num_cells"])
+    out["num_genes"] = out["names"].map(lambda n: dataset_info[n]["num_genes"])
+    out["groupid_for_de"] = "leiden"
     path = os.path.join(out_dir, filename)
     out.to_csv(path, index=False)
     return path
 
 
-def update_config_file(config_path, profile_name,
-                       embeddings_file, mapping_file, masks_file,
-                       train_csv, val_csv,
-                       embedding_size, num_embeddings, num_datasets):
+def update_config_file(
+    config_path,
+    profile_name,
+    embeddings_file,
+    mapping_file,
+    masks_file,
+    train_csv,
+    val_csv,
+    embedding_size,
+    num_embeddings,
+    num_datasets,
+):
     """Insert new profile into config YAML."""
     if os.path.exists(config_path):
         cfg = OmegaConf.load(config_path)
     else:
         cfg = OmegaConf.create({})
-    if 'embeddings' not in cfg:
+    if "embeddings" not in cfg:
         cfg.embeddings = {}
-    if 'dataset' not in cfg:
+    if "dataset" not in cfg:
         cfg.dataset = {}
     cfg.embeddings[profile_name] = {
-        'all_embeddings': embeddings_file,
-        'ds_emb_mapping': mapping_file,
-        'valid_genes_masks': masks_file,
-        'size': embedding_size,
-        'num': num_embeddings,
+        "all_embeddings": embeddings_file,
+        "ds_emb_mapping": mapping_file,
+        "valid_genes_masks": masks_file,
+        "size": embedding_size,
+        "num": num_embeddings,
     }
     cfg.dataset[profile_name] = {
-        'ds_type': 'h5ad',
-        'train': train_csv,
-        'val': val_csv,
-        'filter': True,
-        'num_datasets': num_datasets,
+        "ds_type": "h5ad",
+        "train": train_csv,
+        "val": val_csv,
+        "filter": True,
+        "num_datasets": num_datasets,
     }
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         OmegaConf.save(cfg, f)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = ap.ArgumentParser()
     add_arguments_preprocess(parser)
     args = parser.parse_args()

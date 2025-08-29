@@ -9,12 +9,11 @@ def add_arguments_transform(parser: ap.ArgumentParser):
     parser.add_argument("--input", required=True, help="Path to input anndata file (h5ad)")
     parser.add_argument("--output", required=False, help="Path to output embedded anndata file (h5ad)")
     parser.add_argument("--embed-key", default="X_state", help="Name of key to store embeddings")
-    parser.add_argument("--gene-column", default="gene_name", help="Name of column in var dataframe to use for gene names")
     parser.add_argument("--lancedb", type=str, help="Path to LanceDB database for vector storage")
-    parser.add_argument("--lancedb-update", action="store_true", 
-                       help="Update existing entries in LanceDB (default: append)")
-    parser.add_argument("--lancedb-batch-size", type=int, default=1000,
-                       help="Batch size for LanceDB operations")
+    parser.add_argument(
+        "--lancedb-update", action="store_true", help="Update existing entries in LanceDB (default: append)"
+    )
+    parser.add_argument("--lancedb-batch-size", type=int, default=1000, help="Batch size for LanceDB operations")
 
 
 def run_emb_transform(args: ap.ArgumentParser):
@@ -79,7 +78,6 @@ def run_emb_transform(args: ap.ArgumentParser):
         input_adata_path=args.input,
         output_adata_path=args.output,
         emb_key=args.embed_key,
-        gene_column=args.gene_column,
         lancedb_path=args.lancedb,
         update_lancedb=args.lancedb_update,
         lancedb_batch_size=args.lancedb_batch_size,

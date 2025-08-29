@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import functools
 import numpy as np
 
-from typing import Dict
+from typing import Dict, Optional
 
 from torch.utils.data import DataLoader
 from .. import utils
@@ -32,7 +32,7 @@ def create_dataloader(
     sentence_collator=None,
     protein_embeds=None,
     precision=None,
-    gene_column: str = "gene_name",
+    gene_column: Optional[str] = "gene_name",
 ):
     """
     Expected to be used for inference
@@ -48,11 +48,21 @@ def create_dataloader(
         utils.get_dataset_cfg(cfg).data_dir = data_dir
 
     dataset = FilteredGenesCounts(
-        cfg, datasets=datasets, shape_dict=shape_dict, adata=adata, adata_name=adata_name, protein_embeds=protein_embeds, gene_column=gene_column
+        cfg,
+        datasets=datasets,
+        shape_dict=shape_dict,
+        adata=adata,
+        adata_name=adata_name,
+        protein_embeds=protein_embeds,
+        gene_column=gene_column,
     )
     if sentence_collator is None:
         sentence_collator = VCIDatasetSentenceCollator(
-            cfg, valid_gene_mask=dataset.valid_gene_index, ds_emb_mapping_inference=dataset.ds_emb_map, is_train=False, precision=precision
+            cfg,
+            valid_gene_mask=dataset.valid_gene_index,
+            ds_emb_mapping_inference=dataset.ds_emb_map,
+            is_train=False,
+            precision=precision,
         )
 
     # validation should not use cell augmentations
@@ -173,9 +183,18 @@ class H5adSentenceDataset(data.Dataset):
     def get_dim(self) -> Dict[str, int]:
         return self.num_genes
 
+
 class FilteredGenesCounts(H5adSentenceDataset):
     def __init__(
-        self, cfg, test=False, datasets=None, shape_dict=None, adata=None, adata_name=None, protein_embeds=None, gene_column: str = "gene_name"
+        self,
+        cfg,
+        test=False,
+        datasets=None,
+        shape_dict=None,
+        adata=None,
+        adata_name=None,
+        protein_embeds=None,
+        gene_column: Optional[str] = "gene_name",
     ) -> None:
         super(FilteredGenesCounts, self).__init__(cfg, test, datasets, shape_dict, adata, adata_name)
         self.valid_gene_index = {}
@@ -195,7 +214,7 @@ class FilteredGenesCounts(H5adSentenceDataset):
             self.shapes_dict[adata_name] = adata.shape
 
             # compute its embedding‐index vector
-            esm_data = self.protein_embeds or torch.load(emb_cfg['all_embeddings'], weights_only=False)
+            esm_data = self.protein_embeds or torch.load(emb_cfg["all_embeddings"], weights_only=False)
             valid_genes_list = list(esm_data.keys())
             # make a gene→global‐index lookup
             global_pos = {g: i for i, g in enumerate(valid_genes_list)}
@@ -207,43 +226,44 @@ class FilteredGenesCounts(H5adSentenceDataset):
             new_mapping = np.array([global_pos.get(g, -1) for g in gene_names])
             if (new_mapping == -1).all():
                 # probably it contains ensembl id's instead
-                assert self.gene_column in adata.var.keys(), f"Column '{self.gene_column}' not found in adata.var. Available columns: {list(adata.var.keys())}"
+                assert self.gene_column in adata.var.keys(), (
+                    f"Column '{self.gene_column}' not found in adata.var. Available columns: {list(adata.var.keys())}"
+                )
                 gene_names = adata.var[self.gene_column].values
                 new_mapping = np.array([global_pos.get(g, -1) for g in gene_names])
 
             log.info(f"{(new_mapping != -1).sum()} genes mapped to embedding file (out of {len(new_mapping)})")
             self.ds_emb_map[adata_name] = new_mapping
 
-        print(f"!!! {(self.ds_emb_map[adata_name] != -1).sum()} genes mapped to embedding file (out of {len(self.ds_emb_map[adata_name])})")
+        print(
+            f"!!! {(self.ds_emb_map[adata_name] != -1).sum()} genes mapped to embedding file (out of {len(self.ds_emb_map[adata_name])})"
+        )
 
-        esm_data = self.protein_embeds or torch.load(emb_cfg['all_embeddings'], weights_only=False)
+        esm_data = self.protein_embeds or torch.load(emb_cfg["all_embeddings"], weights_only=False)
         valid_genes_list = list(esm_data.keys())
         for name in self.datasets:
-            if not utils.is_valid_uuid(
-                name
-            ):  # had to add this in for now as cellxgene h5ad fles don't have gene_name object but tahoe does
-                if adata is None:
-                    a = self.dataset_file(name)
-                    try:
-                        gene_names = np.array(
-                            [g.decode("utf-8") for g in a[f"/var/{self.gene_column}"][:]]
-                        )  # Decode byte strings
-                    except:
-                        gene_categories = a[f"/var/{self.gene_column}/categories"][:]
-                        gene_codes = np.array(a[f"/var/{self.gene_column}/codes"][:])
-                        gene_names = np.array([g.decode("utf-8") for g in gene_categories[gene_codes]])
-                    valid_mask = np.isin(gene_names, valid_genes_list)
-                    self.valid_gene_index[name] = valid_mask
-                else:
-                    gene_names = np.array(adata.var_names)
+            if adata is None:
+                a = self.dataset_file(name)
+                try:
+                    gene_names = np.array(
+                        [g.decode("utf-8") for g in a[f"/var/{self.gene_column}"][:]]
+                    )  # Decode byte strings
+                except:
+                    gene_categories = a[f"/var/{self.gene_column}/categories"][:]
+                    gene_codes = np.array(a[f"/var/{self.gene_column}/codes"][:])
+                    gene_names = np.array([g.decode("utf-8") for g in gene_categories[gene_codes]])
+                valid_mask = np.isin(gene_names, valid_genes_list)
+                self.valid_gene_index[name] = valid_mask
+            else:
+                gene_names = np.array(adata.var_names)
+                valid_mask = np.isin(gene_names, valid_genes_list)
+
+                if not valid_mask.any():
+                    # none of the genes were valid, probably ensembl id's
+                    gene_names = adata.var[self.gene_column].values
                     valid_mask = np.isin(gene_names, valid_genes_list)
 
-                    if not valid_mask.any():
-                        # none of the genes were valid, probably ensembl id's
-                        gene_names = adata.var[self.gene_column].values
-                        valid_mask = np.isin(gene_names, valid_genes_list)
-
-                    self.valid_gene_index[name] = valid_mask
+                self.valid_gene_index[name] = valid_mask
 
     def __getitem__(self, idx):
         counts, idx, dataset, dataset_num = super().__getitem__(idx)
@@ -454,7 +474,7 @@ class VCIDatasetSentenceCollator(object):
 
         # store the raw counts here, we need them as targets
         original_counts_raw = counts_raw.clone()
-    
+
         # logic to sample a single cell sentence and task sentence here
         ds_emb_idxs = torch.tensor(self.dataset_to_protein_embeddings[dataset], dtype=torch.long)
 

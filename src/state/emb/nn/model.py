@@ -61,6 +61,7 @@ class SkipBlock(nn.Module):
         x = self.layer_norm(x + residual)
         return x
 
+
 def nanstd(x):
     return torch.sqrt(torch.nanmean(torch.pow(x - torch.nanmean(x, dim=-1).unsqueeze(-1), 2), dim=-1))
 
@@ -314,11 +315,12 @@ class StateEmbeddingModel(L.LightningModule):
                 torch.nan_to_num(
                     torch.nanmean(
                         Y.float().masked_fill(Y == 0, float("nan")),  # ignore zeros
-                        dim=1
+                        dim=1,
                     ),
-                    nan=0.0  # if all were 0→NaN, make it 0
+                    nan=0.0,  # if all were 0→NaN, make it 0
                 )
-                if self.cfg.model.rda else None
+                if self.cfg.model.rda
+                else None
             )
             reshaped_counts = mu.unsqueeze(1).unsqueeze(2)
             reshaped_counts = reshaped_counts.repeat(1, X.shape[1], 1)
