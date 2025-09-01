@@ -213,7 +213,7 @@ def run_emb_eval(args):
         use_raw=False,
     )
 
-    # Compute ROC and PR curves per perturbation
+    # Compute ROC and PR curves per perturbation with correct gene alignment
     print("Computing ROC and PR curves per perturbation...")
     from sklearn.metrics import roc_curve, precision_recall_curve, auc
     from scipy.stats import sem
@@ -223,75 +223,67 @@ def run_emb_eval(args):
     roc_aucs = []
     pr_aucs = []
     
-    # Get ground truth p-values/FDR from scanpy results (now for all genes)
-    pvals = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["pvals_adj"])
-    pvals = pvals.T  # transpose to match our format
+    # Get ground truth results from scanpy 
+    names_df = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["names"])
+    pvals_df = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["pvals_adj"])
+    
+    # Get gene order from original adata
+    gene_order = adata.var.index.tolist()
     
     for pert in pert_effects.index:
-        if pert == args.control_pert:
+        if pert == args.control_pert or pert not in names_df.columns:
             continue
             
-        # Get predicted scores (absolute log prob changes)
+        # Get predicted scores (in original gene order)
         pred_scores = pert_effects.loc[pert].values
         
-        # Get ground truth labels (FDR < 0.05)
-        if pert in pvals.index:
-            true_pvals = pvals.loc[pert].values
-            true_labels = (true_pvals < 0.05).astype(int)
+        # Get ground truth results for this perturbation (proper alignment)
+        pert_col_idx = names_df.columns.get_loc(pert)
+        pert_names = names_df.iloc[:, pert_col_idx].values  # Gene names ordered by significance
+        pert_pvals = pvals_df.iloc[:, pert_col_idx].values  # P-values in same order
+        
+        # Create a mapping from gene name to p-value
+        gene_to_pval = dict(zip(pert_names, pert_pvals))
+        
+        # Create p-values in the same order as predicted scores (original gene order)
+        aligned_pvals = []
+        aligned_pred_scores = []
+        
+        for i, gene in enumerate(gene_order):
+            if gene in gene_to_pval:
+                aligned_pvals.append(gene_to_pval[gene])
+                aligned_pred_scores.append(pred_scores[i])
+            else:
+                # If gene not in statistical test results, assign p-value of 1.0 (not significant)
+                aligned_pvals.append(1.0)
+                aligned_pred_scores.append(pred_scores[i])
+        
+        aligned_pvals = np.array(aligned_pvals)
+        aligned_pred_scores = np.array(aligned_pred_scores)
+        
+        # Create binary labels
+        true_labels = (aligned_pvals < 0.05).astype(int)
+        
+        # Skip if all labels are the same
+        if len(np.unique(true_labels)) < 2:
+            continue
             
-            # Skip if all labels are the same
-            if len(np.unique(true_labels)) < 2:
-                continue
-                
-            # Compute ROC curve
-            fpr, tpr, _ = roc_curve(true_labels, pred_scores)
-            roc_auc = auc(fpr, tpr)
-            roc_curves.append((fpr, tpr))
-            roc_aucs.append(roc_auc)
-            
-            # Compute PR curve
-            precision, recall, _ = precision_recall_curve(true_labels, pred_scores)
-            pr_auc = auc(recall, precision)
-            pr_curves.append((precision, recall))
-            pr_aucs.append(pr_auc)
+        # Compute ROC curve
+        fpr, tpr, _ = roc_curve(true_labels, aligned_pred_scores)
+        roc_auc = auc(fpr, tpr)
+        roc_curves.append((fpr, tpr))
+        roc_aucs.append(roc_auc)
+        
+        # Compute PR curve
+        precision, recall, _ = precision_recall_curve(true_labels, aligned_pred_scores)
+        pr_auc = auc(recall, precision)
+        pr_curves.append((precision, recall))
+        pr_aucs.append(pr_auc)
     
-    # Average curves using interpolation
+    # Compute and report AUC metrics
     if roc_curves:
-        # ROC curve averaging
-        mean_fpr = np.linspace(0, 1, 100)
-        tpr_curves = []
-        for fpr, tpr in roc_curves:
-            tpr_curves.append(np.interp(mean_fpr, fpr, tpr))
-        tpr_curves = np.array(tpr_curves)
-        mean_tpr = np.mean(tpr_curves, axis=0)
-        std_tpr = np.std(tpr_curves, axis=0)
-        stderr_tpr = sem(tpr_curves, axis=0)
-        
-        # PR curve averaging  
-        mean_recall = np.linspace(0, 1, 100)
-        precision_curves = []
-        for precision, recall in pr_curves:
-            # Reverse for interpolation (recall should be increasing)
-            precision_curves.append(np.interp(mean_recall, recall[::-1], precision[::-1]))
-        precision_curves = np.array(precision_curves)
-        mean_precision = np.mean(precision_curves, axis=0)
-        std_precision = np.std(precision_curves, axis=0)
-        stderr_precision = sem(precision_curves, axis=0)
-        
-        print(f"\nROC and PR Curve Results:")
-        print(f"Mean ROC AUC: {np.mean(roc_aucs):.4f} ± {sem(roc_aucs):.4f}")
-        print(f"Mean PR AUC: {np.mean(pr_aucs):.4f} ± {sem(pr_aucs):.4f}")
-        print(f"Number of perturbations with curves: {len(roc_aucs)}")
-        
-        print("\nROC Curve Arrays:")
-        print("ROC - fpr:", mean_fpr.tolist())
-        print("ROC - tpr:", mean_tpr.tolist())
-        print("ROC - tpr_stderr:", stderr_tpr.tolist())
-        
-        print("\nPR Curve Arrays:")
-        print("PR - recall:", mean_recall.tolist())
-        print("PR - precision:", mean_precision.tolist())
-        print("PR - precision_stderr:", stderr_precision.tolist())
+        print(f"\nROC AUC: {np.mean(roc_aucs):.4f} ± {sem(roc_aucs):.4f}")
+        print(f"PR AUC: {np.mean(pr_aucs):.4f} ± {sem(pr_aucs):.4f}")
     else:
         print("No valid ROC/PR curves could be computed (insufficient variation in labels)")
 
@@ -301,30 +293,6 @@ def run_emb_eval(args):
     print(f"Mean gene overlap: {mean_overlap:.4f}")
     print(f"Number of perturbations evaluated: {len(de_metrics)}")
 
-    # Save outputs with checkpoint-specific naming
-    checkpoint_name = Path(args.checkpoint).stem
-    print(f"\nSaving outputs with prefix: {checkpoint_name}")
-    
-    # Save reconstructed adata with embeddings and predictions
-    adata.write_h5ad(f"{checkpoint_name}_reconstructed.h5ad")
-    print(f"Saved reconstructed AnnData: {checkpoint_name}_reconstructed.h5ad")
-    
-    # Save the rank genes groups results (all genes)
-    rank_genes_results = {
-        'names': adata_copy.uns['rank_genes_groups']['names'],
-        'scores': adata_copy.uns['rank_genes_groups']['scores'],
-        'pvals': adata_copy.uns['rank_genes_groups']['pvals'],
-        'pvals_adj': adata_copy.uns['rank_genes_groups']['pvals_adj'],
-        'logfoldchanges': adata_copy.uns['rank_genes_groups']['logfoldchanges']
-    }
-    np.savez(f"{checkpoint_name}_rank_genes_groups.npz", **rank_genes_results)
-    print(f"Saved rank genes groups results: {checkpoint_name}_rank_genes_groups.npz")
-    
-    # Save predicted effects and top genes
-    pert_effects.to_csv(f"{checkpoint_name}_predicted_effects.csv")
-    pred_de_genes.to_csv(f"{checkpoint_name}_predicted_top_genes.csv")
-    print(f"Saved predicted effects: {checkpoint_name}_predicted_effects.csv")
-    print(f"Saved predicted top genes: {checkpoint_name}_predicted_top_genes.csv")
 
     return de_metrics, mean_overlap
 
