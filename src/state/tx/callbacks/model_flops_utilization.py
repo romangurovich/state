@@ -112,7 +112,7 @@ class ModelFLOPSUtilizationCallback(Callback):
         # Measure FLOPs using a single callable that runs training_step and backward
         def forward_fn():
             return self._trainstep_forward_backward(model, batch)
-        
+
         self._flops_per_batch = int(measure_flops(model, forward_fn=forward_fn))
         print(f"ModelFLOPSUtilizationCallback: Measured FLOPs per batch: {self._flops_per_batch}")
         pl_module.log("flops_per_batch", self._flops_per_batch, prog_bar=False, on_step=True, on_epoch=False)

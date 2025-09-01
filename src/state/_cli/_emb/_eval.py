@@ -1,6 +1,7 @@
 import argparse as ap
 import os
 
+
 def add_arguments_eval(parser: ap.ArgumentParser):
     """Add arguments for embedding evaluation CLI."""
     parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint file")
@@ -12,7 +13,6 @@ def add_arguments_eval(parser: ap.ArgumentParser):
     )
     parser.add_argument("--gene-column", default="gene_name", help="Column name for gene names (default: gene_name)")
     parser.add_argument("--batch-size", type=int, help="Batch size for model inference (overrides config default)")
-
 
 
 def run_emb_eval(args):
@@ -40,7 +40,10 @@ def run_emb_eval(args):
                 "model": {"batch_size": 32, "rda": False},
                 "dataset": {"P": 1000, "N": 1000},
                 "validations": {"diff_exp": {"top_k_rank": 50, "method": "wilcoxon"}},
-                "embeddings": {"current": "default", "default": {"all_embeddings": "path/to/embeddings.pt", "size": 5120}},
+                "embeddings": {
+                    "current": "default",
+                    "default": {"all_embeddings": "path/to/embeddings.pt", "size": 5120},
+                },
             }
             return OmegaConf.create(cfg_dict)
 
@@ -61,7 +64,7 @@ def run_emb_eval(args):
 
     # Load configuration
     cfg = load_config(args.config)
-    
+
     # Override batch size if provided
     if args.batch_size:
         cfg.model.batch_size = args.batch_size
@@ -181,7 +184,7 @@ def run_emb_eval(args):
     print("Computing ground truth DEGs for all genes...")
     adata_copy = adata.copy()  # Don't modify original adata
     sc.pp.log1p(adata_copy)
-    
+
     # First compute for top k genes (for overlap metric)
     sc.tl.rank_genes_groups(
         adata_copy,
@@ -217,38 +220,38 @@ def run_emb_eval(args):
     print("Computing ROC and PR curves per perturbation...")
     from sklearn.metrics import roc_curve, precision_recall_curve, auc
     from scipy.stats import sem
-    
+
     roc_curves = []
     pr_curves = []
     roc_aucs = []
     pr_aucs = []
-    
-    # Get ground truth results from scanpy 
+
+    # Get ground truth results from scanpy
     names_df = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["names"])
     pvals_df = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["pvals_adj"])
-    
+
     # Get gene order from original adata
     gene_order = adata.var.index.tolist()
-    
+
     for pert in pert_effects.index:
         if pert == args.control_pert or pert not in names_df.columns:
             continue
-            
+
         # Get predicted scores (in original gene order)
         pred_scores = pert_effects.loc[pert].values
-        
+
         # Get ground truth results for this perturbation (proper alignment)
         pert_col_idx = names_df.columns.get_loc(pert)
         pert_names = names_df.iloc[:, pert_col_idx].values  # Gene names ordered by significance
         pert_pvals = pvals_df.iloc[:, pert_col_idx].values  # P-values in same order
-        
+
         # Create a mapping from gene name to p-value
         gene_to_pval = dict(zip(pert_names, pert_pvals))
-        
+
         # Create p-values in the same order as predicted scores (original gene order)
         aligned_pvals = []
         aligned_pred_scores = []
-        
+
         for i, gene in enumerate(gene_order):
             if gene in gene_to_pval:
                 aligned_pvals.append(gene_to_pval[gene])
@@ -257,29 +260,29 @@ def run_emb_eval(args):
                 # If gene not in statistical test results, assign p-value of 1.0 (not significant)
                 aligned_pvals.append(1.0)
                 aligned_pred_scores.append(pred_scores[i])
-        
+
         aligned_pvals = np.array(aligned_pvals)
         aligned_pred_scores = np.array(aligned_pred_scores)
-        
+
         # Create binary labels
         true_labels = (aligned_pvals < 0.05).astype(int)
-        
+
         # Skip if all labels are the same
         if len(np.unique(true_labels)) < 2:
             continue
-            
+
         # Compute ROC curve
         fpr, tpr, _ = roc_curve(true_labels, aligned_pred_scores)
         roc_auc = auc(fpr, tpr)
         roc_curves.append((fpr, tpr))
         roc_aucs.append(roc_auc)
-        
+
         # Compute PR curve
         precision, recall, _ = precision_recall_curve(true_labels, aligned_pred_scores)
         pr_auc = auc(recall, precision)
         pr_curves.append((precision, recall))
         pr_aucs.append(pr_auc)
-    
+
     # Compute and report AUC metrics
     if roc_curves:
         print(f"\nROC AUC: {np.mean(roc_aucs):.4f} ± {sem(roc_aucs):.4f}")
@@ -292,7 +295,6 @@ def run_emb_eval(args):
     print(f"\nOverlap Results:")
     print(f"Mean gene overlap: {mean_overlap:.4f}")
     print(f"Number of perturbations evaluated: {len(de_metrics)}")
-
 
     return de_metrics, mean_overlap
 
