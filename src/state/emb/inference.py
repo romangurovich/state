@@ -252,14 +252,13 @@ class Inference:
 
         # Check all columns in var
         for col in adata.var.columns:
-            if adata.var[col].dtype == "object" or adata.var[col].dtype.name.startswith("str"):
-                col_genes = set(adata.var[col].dropna().astype(str))
-                overlap = len(protein_genes.intersection(col_genes))
-                overlap_pct = overlap / len(col_genes) if len(col_genes) > 0 else 0
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best_overlap_pct = overlap_pct
-                    best_column = col
+            col_genes = set(adata.var[col].dropna().astype(str))
+            overlap = len(protein_genes.intersection(col_genes))
+            overlap_pct = overlap / len(col_genes) if len(col_genes) > 0 else 0
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_overlap_pct = overlap_pct
+                best_column = col
 
         if best_column is None:
             log.info(
