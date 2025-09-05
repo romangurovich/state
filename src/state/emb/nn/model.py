@@ -371,15 +371,6 @@ class StateEmbeddingModel(L.LightningModule):
         # Log the statistics
         self.log(f"{prefix}/avg_nonzero_genes", avg_nonzero)
         self.log(f"{prefix}/nonzero_fraction", nonzero_fraction)
-            # Create histogram bins
-            bins = torch.linspace(0, total_slots, min(21, total_slots + 1), device=self.device)
-            hist = torch.histogram(nonzero_counts.float(), bins=bins)[0].float()
-            hist_normalized = hist / hist.sum()  # Normalize to get probabilities
-            
-            # Log histogram as individual metrics for each bin
-            for i in range(len(bins) - 1):
-                bin_name = f"{bins[i]:.0f}-{bins[i+1]:.0f}"
-                self.log(f"{prefix}/hist_{bin_name}_nonzero_genes", hist_normalized[i])
 
     def shared_step(self, batch, batch_idx):
         logging.info(f"Step {self.global_step} - Batch {batch_idx}")
