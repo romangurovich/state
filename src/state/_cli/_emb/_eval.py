@@ -1,4 +1,5 @@
 import argparse as ap
+import os
 
 
 def add_arguments_eval(parser: ap.ArgumentParser):
@@ -11,22 +12,7 @@ def add_arguments_eval(parser: ap.ArgumentParser):
         "--control-pert", default="non-targeting", help="Control perturbation label (default: non-targeting)"
     )
     parser.add_argument("--gene-column", default="gene_name", help="Column name for gene names (default: gene_name)")
-
-
-def load_config(config_path: str | None = None):
-    """Load config from YAML file or create default config."""
-    if config_path and os.path.exists(config_path):
-        cfg = OmegaConf.load(config_path)
-        return cfg
-    else:
-        # Create minimal default config for inference
-        cfg_dict = {
-            "model": {"batch_size": 32, "rda": False},
-            "dataset": {"P": 1000, "N": 1000},
-            "validations": {"diff_exp": {"top_k_rank": 50, "method": "wilcoxon"}},
-            "embeddings": {"current": "default", "default": {"all_embeddings": "path/to/embeddings.pt", "size": 5120}},
-        }
-        return OmegaConf.create(cfg_dict)
+    parser.add_argument("--batch-size", type=int, help="Batch size for model inference (overrides config default)")
 
 
 def run_emb_eval(args):
@@ -42,6 +28,24 @@ def run_emb_eval(args):
     from pathlib import Path
     from tqdm import tqdm
     from omegaconf import OmegaConf, DictConfig
+
+    def load_config(config_path: str | None = None):
+        """Load config from YAML file or create default config."""
+        if config_path and os.path.exists(config_path):
+            cfg = OmegaConf.load(config_path)
+            return cfg
+        else:
+            # Create minimal default config for inference
+            cfg_dict = {
+                "model": {"batch_size": 32, "rda": False},
+                "dataset": {"P": 1000, "N": 1000},
+                "validations": {"diff_exp": {"top_k_rank": 50, "method": "wilcoxon"}},
+                "embeddings": {
+                    "current": "default",
+                    "default": {"all_embeddings": "path/to/embeddings.pt", "size": 5120},
+                },
+            }
+            return OmegaConf.create(cfg_dict)
 
     from ...emb.nn.model import StateEmbeddingModel
     from ...emb.utils import compute_gene_overlap_cross_pert, get_embedding_cfg, get_precision_config
@@ -60,6 +64,11 @@ def run_emb_eval(args):
 
     # Load configuration
     cfg = load_config(args.config)
+
+    # Override batch size if provided
+    if args.batch_size:
+        cfg.model.batch_size = args.batch_size
+        print(f"Using batch size: {args.batch_size}")
 
     # Load AnnData
     adata = sc.read_h5ad(args.adata)
@@ -171,11 +180,14 @@ def run_emb_eval(args):
 
     print(f"Predicted DEGs shape: {pred_de_genes.shape}")
 
-    # Compute ground truth DEGs
-    print("Computing ground truth DEGs...")
-    sc.pp.log1p(adata)
+    # Compute ground truth DEGs for ALL genes (for ROC/PR curves)
+    print("Computing ground truth DEGs for all genes...")
+    adata_copy = adata.copy()  # Don't modify original adata
+    sc.pp.log1p(adata_copy)
+
+    # First compute for top k genes (for overlap metric)
     sc.tl.rank_genes_groups(
-        adata,
+        adata_copy,
         groupby=args.pert_col,
         reference=args.control_pert,
         rankby_abs=True,
@@ -183,7 +195,7 @@ def run_emb_eval(args):
         method=cfg.validations.diff_exp.method,
         use_raw=False,
     )
-    true_de_genes = pd.DataFrame(adata.uns["rank_genes_groups"]["names"])
+    true_de_genes = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["names"])
     true_de_genes = true_de_genes.T
 
     print(f"Ground truth DEGs shape: {true_de_genes.shape}")
@@ -192,9 +204,95 @@ def run_emb_eval(args):
     print("Computing gene overlap metrics...")
     de_metrics = compute_gene_overlap_cross_pert(pred_de_genes, true_de_genes, control_pert=args.control_pert, k=k)
 
-    # Print results
+    # Now compute for ALL genes (for ROC/PR curves)
+    print("Computing statistical tests for all genes...")
+    sc.tl.rank_genes_groups(
+        adata_copy,
+        groupby=args.pert_col,
+        reference=args.control_pert,
+        rankby_abs=True,
+        n_genes=adata_copy.n_vars,  # All genes
+        method=cfg.validations.diff_exp.method,
+        use_raw=False,
+    )
+
+    # Compute ROC and PR curves per perturbation with correct gene alignment
+    print("Computing ROC and PR curves per perturbation...")
+    from sklearn.metrics import roc_curve, precision_recall_curve, auc
+    from scipy.stats import sem
+
+    roc_curves = []
+    pr_curves = []
+    roc_aucs = []
+    pr_aucs = []
+
+    # Get ground truth results from scanpy
+    names_df = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["names"])
+    pvals_df = pd.DataFrame(adata_copy.uns["rank_genes_groups"]["pvals_adj"])
+
+    # Get gene order from original adata
+    gene_order = adata.var.index.tolist()
+
+    for pert in pert_effects.index:
+        if pert == args.control_pert or pert not in names_df.columns:
+            continue
+
+        # Get predicted scores (in original gene order)
+        pred_scores = pert_effects.loc[pert].values
+
+        # Get ground truth results for this perturbation (proper alignment)
+        pert_col_idx = names_df.columns.get_loc(pert)
+        pert_names = names_df.iloc[:, pert_col_idx].values  # Gene names ordered by significance
+        pert_pvals = pvals_df.iloc[:, pert_col_idx].values  # P-values in same order
+
+        # Create a mapping from gene name to p-value
+        gene_to_pval = dict(zip(pert_names, pert_pvals))
+
+        # Create p-values in the same order as predicted scores (original gene order)
+        aligned_pvals = []
+        aligned_pred_scores = []
+
+        for i, gene in enumerate(gene_order):
+            if gene in gene_to_pval:
+                aligned_pvals.append(gene_to_pval[gene])
+                aligned_pred_scores.append(pred_scores[i])
+            else:
+                # If gene not in statistical test results, assign p-value of 1.0 (not significant)
+                aligned_pvals.append(1.0)
+                aligned_pred_scores.append(pred_scores[i])
+
+        aligned_pvals = np.array(aligned_pvals)
+        aligned_pred_scores = np.array(aligned_pred_scores)
+
+        # Create binary labels
+        true_labels = (aligned_pvals < 0.05).astype(int)
+
+        # Skip if all labels are the same
+        if len(np.unique(true_labels)) < 2:
+            continue
+
+        # Compute ROC curve
+        fpr, tpr, _ = roc_curve(true_labels, aligned_pred_scores)
+        roc_auc = auc(fpr, tpr)
+        roc_curves.append((fpr, tpr))
+        roc_aucs.append(roc_auc)
+
+        # Compute PR curve
+        precision, recall, _ = precision_recall_curve(true_labels, aligned_pred_scores)
+        pr_auc = auc(recall, precision)
+        pr_curves.append((precision, recall))
+        pr_aucs.append(pr_auc)
+
+    # Compute and report AUC metrics
+    if roc_curves:
+        print(f"\nROC AUC: {np.mean(roc_aucs):.4f} ± {sem(roc_aucs):.4f}")
+        print(f"PR AUC: {np.mean(pr_aucs):.4f} ± {sem(pr_aucs):.4f}")
+    else:
+        print("No valid ROC/PR curves could be computed (insufficient variation in labels)")
+
+    # Print overlap results
     mean_overlap = np.array(list(de_metrics.values())).mean()
-    print(f"\nResults:")
+    print(f"\nOverlap Results:")
     print(f"Mean gene overlap: {mean_overlap:.4f}")
     print(f"Number of perturbations evaluated: {len(de_metrics)}")
 
