@@ -12,7 +12,7 @@ kwargs:
   n_decoder_layers: 4
   predict_residual: True
   softplus: True
-  freeze_pert: False
+  freeze_pert_backbone: False
   transformer_decoder: False
   finetune_vci_decoder: False
   residual_decoder: False
@@ -43,3 +43,13 @@ kwargs:
       tie_word_embeddings: false
       rotary_dim: 0
       use_rotary_embeddings: false
+  lora:
+      enable: false
+      r: 16
+      alpha: 32
+      dropout: 0.05
+      bias: none
+      target: auto
+      adapt_mlp: false
+      task_type: FEATURE_EXTRACTION
+      merge_on_eval: false

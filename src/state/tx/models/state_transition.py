@@ -12,7 +12,7 @@ from typing import Tuple
 from .base import PerturbationModel
 from .decoders import FinetuneVCICountsDecoder
 from .decoders_nb import NBDecoder, nb_nll
-from .utils import build_mlp, get_activation_class, get_transformer_backbone
+from .utils import build_mlp, get_activation_class, get_transformer_backbone, apply_lora
 
 
 logger = logging.getLogger(__name__)
@@ -208,15 +208,18 @@ class StateTransitionPerturbationModel(PerturbationModel):
             self.confidence_token = ConfidenceToken(hidden_dim=self.hidden_dim, dropout=self.dropout)
             self.confidence_loss_fn = nn.MSELoss()
 
-        self.freeze_pert_backbone = kwargs.get("freeze_pert_backbone", False)
+        # Backward-compat: accept legacy key `freeze_pert`
+        self.freeze_pert_backbone = kwargs.get("freeze_pert_backbone", kwargs.get("freeze_pert", False))
         if self.freeze_pert_backbone:
-            modules_to_freeze = [
-                self.transformer_backbone,
-                self.project_out,
-            ]
-            for module in modules_to_freeze:
-                for param in module.parameters():
+            # Freeze backbone base weights but keep LoRA adapter weights (if present) trainable
+            for name, param in self.transformer_backbone.named_parameters():
+                if "lora_" in name:
+                    param.requires_grad = True
+                else:
                     param.requires_grad = False
+            # Freeze projection head as before
+            for param in self.project_out.parameters():
+                param.requires_grad = False
 
         if kwargs.get("nb_decoder", False):
             self.gene_decoder = NBDecoder(
@@ -288,6 +291,15 @@ class StateTransitionPerturbationModel(PerturbationModel):
             self.transformer_backbone_key,
             self.transformer_backbone_kwargs,
         )
+
+        # Optionally wrap backbone with LoRA adapters
+        lora_cfg = kwargs.get("lora", None)
+        if lora_cfg and lora_cfg.get("enable", False):
+            self.transformer_backbone = apply_lora(
+                self.transformer_backbone,
+                self.transformer_backbone_key,
+                lora_cfg,
+            )
 
         # Project from input_dim to hidden_dim for transformer input
         # self.project_to_hidden = nn.Linear(self.input_dim, self.hidden_dim)
