@@ -356,21 +356,13 @@ class StateEmbeddingModel(L.LightningModule):
         
         Logs:
             - {prefix}/avg_nonzero_genes: Average number of non-zero genes per cell
-            - {prefix}/min_nonzero_genes: Minimum number of non-zero genes in batch
-            - {prefix}/max_nonzero_genes: Maximum number of non-zero genes in batch
-            - {prefix}/std_nonzero_genes: Standard deviation of non-zero gene counts
             - {prefix}/nonzero_fraction: Fraction of non-zero genes relative to total slots
-            - {prefix}/total_slots: Total number of slots available (excluding CLS token)
-            - {prefix}/hist_{bin}_nonzero_genes: Histogram bins of non-zero gene distribution
         """
         # Count non-zero elements per cell in the batch
         # mask is True for non-zero (expressed) genes, False for zero (unexpressed/padded) genes
         # We exclude the CLS token (position 0) from the count
         nonzero_counts = mask[:, 1:].sum(dim=1)  # Sum across sequence dimension, excluding CLS token
         avg_nonzero = nonzero_counts.float().mean()
-        min_nonzero = nonzero_counts.min()
-        max_nonzero = nonzero_counts.max()
-        std_nonzero = nonzero_counts.float().std()
         
         # Calculate the fraction of non-zero elements (excluding CLS token)
         total_slots = mask.shape[1] - 1  # Exclude CLS token
@@ -378,15 +370,7 @@ class StateEmbeddingModel(L.LightningModule):
         
         # Log the statistics
         self.log(f"{prefix}/avg_nonzero_genes", avg_nonzero)
-        self.log(f"{prefix}/min_nonzero_genes", min_nonzero.float())
-        self.log(f"{prefix}/max_nonzero_genes", max_nonzero.float())
-        self.log(f"{prefix}/std_nonzero_genes", std_nonzero)
         self.log(f"{prefix}/nonzero_fraction", nonzero_fraction)
-        self.log(f"{prefix}/total_slots", float(total_slots))
-        
-        # Log histogram of non-zero counts distribution for detailed analysis
-        # This will help understand the distribution of expressed genes across cells
-        if self.training and self.global_step % 100 == 0:  # Log histogram every 100 steps to avoid spam
             # Create histogram bins
             bins = torch.linspace(0, total_slots, min(21, total_slots + 1), device=self.device)
             hist = torch.histogram(nonzero_counts.float(), bins=bins)[0].float()
