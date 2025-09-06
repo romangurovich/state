@@ -9,6 +9,7 @@ import pandas as pd
 import scanpy as sc
 import torch.nn.functional as F
 import torch
+from omegaconf import OmegaConf
 import lightning as L
 
 import sys
@@ -178,6 +179,41 @@ class StateEmbeddingModel(L.LightningModule):
             self.dataset_loss = nn.CrossEntropyLoss()
         else:
             self.dataset_token = None
+
+    def on_save_checkpoint(self, checkpoint):
+        """
+        Persist a snapshot of the training config inside the checkpoint so downstream
+        inference/eval can run without an external config file.
+        """
+        try:
+            if self.cfg is not None:
+                # Store both a YAML snapshot and a resolved container for robustness
+                checkpoint["cfg_yaml"] = OmegaConf.to_yaml(self.cfg)
+        except Exception:
+            # Never block checkpointing if config serialization fails
+            pass
+
+        # Also package protein embeddings for standalone inference/transform.
+        try:
+            if self.protein_embeds is not None:
+                pe = self.protein_embeds
+            else:
+                # Load from configured path as a fallback
+                from ..utils import get_embedding_cfg
+
+                pe = torch.load(get_embedding_cfg(self.cfg).all_embeddings, map_location="cpu", weights_only=False)
+            # Ensure CPU tensors in the dictionary
+            if isinstance(pe, dict):
+                cpu_pe = {}
+                for k, v in pe.items():
+                    try:
+                        cpu_pe[k] = v.detach().to("cpu") if hasattr(v, "detach") else torch.tensor(v, device="cpu")
+                    except Exception:
+                        cpu_pe[k] = v
+                checkpoint["protein_embeds_dict"] = cpu_pe
+        except Exception:
+            # Do not block checkpoint save if embedding packaging fails
+            pass
 
     def _compute_embedding_for_batch(self, batch):
         batch_sentences = batch[0].to(self.device)

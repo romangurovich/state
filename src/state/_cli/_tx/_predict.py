@@ -43,10 +43,7 @@ def add_arguments_predict(parser: ap.ArgumentParser):
     parser.add_argument(
         "--shared-only",
         action="store_true",
-        help=(
-            "If set, restrict predictions/evaluation to perturbations shared "
-            "between train and test (train ∩ test)."
-        ),
+        help=("If set, restrict predictions/evaluation to perturbations shared between train and test (train ∩ test)."),
     )
 
 
@@ -352,9 +349,7 @@ def run_tx_predict(args: ap.ArgumentParser):
         try:
             shared_perts = data_module.get_shared_perturbations()
             if len(shared_perts) == 0:
-                logger.warning(
-                    "No shared perturbations between train and test; skipping filtering."
-                )
+                logger.warning("No shared perturbations between train and test; skipping filtering.")
             else:
                 logger.info(
                     "Filtering to %d shared perturbations present in train ∩ test.",

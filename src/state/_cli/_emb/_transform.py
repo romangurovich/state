@@ -5,10 +5,23 @@ def add_arguments_transform(parser: ap.ArgumentParser):
     """Add arguments for state embedding CLI."""
     parser.add_argument("--model-folder", required=True, help="Path to the model checkpoint folder")
     parser.add_argument("--checkpoint", required=False, help="Path to the specific model checkpoint")
-    parser.add_argument("--config", required=False, help="Path to config override")
+    parser.add_argument(
+        "--config",
+        required=False,
+        help=(
+            "Path to config override. If omitted, uses the config embedded in the checkpoint; ignores any config in the model folder."
+        ),
+    )
     parser.add_argument("--input", required=True, help="Path to input anndata file (h5ad)")
     parser.add_argument("--output", required=False, help="Path to output embedded anndata file (h5ad)")
     parser.add_argument("--embed-key", default="X_state", help="Name of key to store embeddings")
+    parser.add_argument(
+        "--protein-embeddings",
+        required=False,
+        help=(
+            "Path to protein embeddings override (.pt). If omitted, uses embeddings packaged in the checkpoint, or the path from config as fallback."
+        ),
+    )
     parser.add_argument("--lancedb", type=str, help="Path to LanceDB database for vector storage")
     parser.add_argument(
         "--lancedb-update", action="store_true", help="Update existing entries in LanceDB (default: append)"
@@ -48,12 +61,13 @@ def run_emb_transform(args: ap.ArgumentParser):
 
     # Create inference object
     logger.info("Creating inference object")
-    embedding_file = os.path.join(args.model_folder, "protein_embeddings.pt")
-    protein_embeds = torch.load(embedding_file, weights_only=False, map_location="cpu")
+    # Resolve protein embeddings: explicit override -> use; else let Inference load from checkpoint/config later
+    protein_embeds = None
+    if args.protein_embeddings:
+        protein_embeds = torch.load(args.protein_embeddings, weights_only=False, map_location="cpu")
 
-    config_file = args.config or os.path.join(args.model_folder, "config.yaml")
-    conf = OmegaConf.load(config_file)
-
+    # Only use config override if explicitly provided; otherwise use config embedded in the checkpoint
+    conf = OmegaConf.load(args.config) if args.config else None
     inferer = Inference(cfg=conf, protein_embeds=protein_embeds)
 
     # Load model from checkpoint
