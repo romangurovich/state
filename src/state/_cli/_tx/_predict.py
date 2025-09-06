@@ -7,7 +7,7 @@ def add_arguments_predict(parser: ap.ArgumentParser):
     """
 
     parser.add_argument(
-        "--output_dir",
+        "--output-dir",
         type=str,
         required=True,
         help="Path to the output_dir containing the config.yaml file that was saved during training.",
@@ -20,7 +20,7 @@ def add_arguments_predict(parser: ap.ArgumentParser):
     )
 
     parser.add_argument(
-        "--test_time_finetune",
+        "--test-time-finetune",
         type=int,
         default=0,
         help="If >0, run test-time fine-tuning for the specified number of epochs on only control cells.",
@@ -35,9 +35,15 @@ def add_arguments_predict(parser: ap.ArgumentParser):
     )
 
     parser.add_argument(
-        "--predict_only",
+        "--predict-only",
         action="store_true",
         help="If set, only run prediction without evaluation metrics.",
+    )
+
+    parser.add_argument(
+        "--shared-only",
+        action="store_true",
+        help=("If set, restrict predictions/evaluation to perturbations shared between train and test (train ∩ test)."),
     )
 
 
@@ -337,6 +343,32 @@ def run_tx_predict(args: ap.ArgumentParser):
         # Create adata for real - using the true gene expression values
         # adata_real = anndata.AnnData(X=final_reals, obs=obs, var=var)
         adata_real = anndata.AnnData(X=final_reals, obs=obs)
+
+    # Optionally filter to perturbations seen in at least one training context
+    if args.shared_only:
+        try:
+            shared_perts = data_module.get_shared_perturbations()
+            if len(shared_perts) == 0:
+                logger.warning("No shared perturbations between train and test; skipping filtering.")
+            else:
+                logger.info(
+                    "Filtering to %d shared perturbations present in train ∩ test.",
+                    len(shared_perts),
+                )
+                mask = adata_pred.obs[data_module.pert_col].isin(shared_perts)
+                before_n = adata_pred.n_obs
+                adata_pred = adata_pred[mask].copy()
+                adata_real = adata_real[mask].copy()
+                logger.info(
+                    "Filtered cells: %d -> %d (kept only seen perturbations)",
+                    before_n,
+                    adata_pred.n_obs,
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to filter by shared perturbations (%s). Proceeding without filter.",
+                str(e),
+            )
 
     # Save the AnnData objects
     results_dir = os.path.join(args.output_dir, "eval_" + os.path.basename(args.checkpoint))

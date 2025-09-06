@@ -10,6 +10,7 @@ from tqdm import tqdm
 from torch import nn
 
 from .nn.model import StateEmbeddingModel
+from omegaconf import OmegaConf
 from .train.trainer import get_embeddings
 from .data import create_dataloader
 from .utils import get_embedding_cfg, get_precision_config
@@ -94,6 +95,33 @@ class Inference:
             raise ValueError("Model already initialized")
 
         # Load and initialize model for eval
+        # If no cfg provided, try to restore it from the checkpoint
+        cfg_to_use = self._vci_conf
+        if cfg_to_use is None:
+            try:
+                # Need full checkpoint to access embedded config and embeddings
+                ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+                # Prefer an explicit yaml snapshot if present
+                if isinstance(ckpt, dict) and "cfg_yaml" in ckpt:
+                    cfg_to_use = OmegaConf.create(ckpt["cfg_yaml"])  # type: ignore
+                # Fallback: try hyper_parameters section
+                elif isinstance(ckpt, dict) and "hyper_parameters" in ckpt:
+                    hp = ckpt.get("hyper_parameters", {}) or {}
+                    if isinstance(hp, dict) and "cfg_yaml" in hp:
+                        cfg_to_use = OmegaConf.create(hp["cfg_yaml"])  # type: ignore
+                    elif isinstance(hp, dict) and "cfg" in hp and hp["cfg"] is not None:
+                        cfg_to_use = OmegaConf.create(hp["cfg"])  # type: ignore
+                # Attempt to extract packaged protein embeddings as well
+                if isinstance(ckpt, dict) and "protein_embeds_dict" in ckpt and self.protein_embeds is None:
+                    self.protein_embeds = ckpt["protein_embeds_dict"]
+            except Exception as e:
+                log.warning(f"Could not extract config from checkpoint: {e}")
+
+        if cfg_to_use is None:
+            raise ValueError("No config found in checkpoint and no override provided. Provide --config to proceed.")
+
+        # Keep internal cfg in sync
+        self._vci_conf = cfg_to_use
         self.model = StateEmbeddingModel.load_from_checkpoint(checkpoint, dropout=0.0, strict=False, cfg=self._vci_conf)
 
         # Convert model to appropriate precision for faster inference
@@ -101,6 +129,15 @@ class Inference:
         precision = get_precision_config(device_type=device_type)
         self.model = self.model.to(precision)
 
+        # Resolve protein embeddings: prefer provided/packaged, then config
+        if self.protein_embeds is None:
+            # Try to extract from the checkpoint payload even if cfg was provided externally
+            try:
+                ckpt2 = torch.load(checkpoint, map_location="cpu", weights_only=False)
+                if isinstance(ckpt2, dict) and "protein_embeds_dict" in ckpt2:
+                    self.protein_embeds = ckpt2["protein_embeds_dict"]
+            except Exception:
+                pass
         all_pe = self.protein_embeds or get_embeddings(self._vci_conf)
         if isinstance(all_pe, dict):
             all_pe = torch.vstack(list(all_pe.values()))
@@ -110,6 +147,7 @@ class Inference:
         self.model.eval()
 
         if self.protein_embeds is None:
+            # Final fallback to config path
             self.protein_embeds = torch.load(get_embedding_cfg(self._vci_conf).all_embeddings, weights_only=False)
 
     def init_from_model(self, model, protein_embeds=None):

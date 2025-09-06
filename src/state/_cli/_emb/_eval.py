@@ -6,13 +6,24 @@ def add_arguments_eval(parser: ap.ArgumentParser):
     """Add arguments for embedding evaluation CLI."""
     parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint file")
     parser.add_argument("--adata", required=True, help="Path to AnnData file")
-    parser.add_argument("--config", required=False, help="Path to configuration file (optional)")
+    parser.add_argument(
+        "--config",
+        required=False,
+        help=("Path to configuration override. If omitted, uses the config embedded in the checkpoint."),
+    )
     parser.add_argument("--pert-col", default="gene", help="Column name for perturbation labels (default: gene)")
     parser.add_argument(
         "--control-pert", default="non-targeting", help="Control perturbation label (default: non-targeting)"
     )
     parser.add_argument("--gene-column", default="gene_name", help="Column name for gene names (default: gene_name)")
     parser.add_argument("--batch-size", type=int, help="Batch size for model inference (overrides config default)")
+    parser.add_argument(
+        "--protein-embeddings",
+        required=False,
+        help=(
+            "Path to protein embeddings override (.pt). If omitted, uses embeddings packaged in the checkpoint, or the path from config as fallback."
+        ),
+    )
 
 
 def run_emb_eval(args):
@@ -29,23 +40,11 @@ def run_emb_eval(args):
     from tqdm import tqdm
     from omegaconf import OmegaConf, DictConfig
 
-    def load_config(config_path: str | None = None):
-        """Load config from YAML file or create default config."""
+    def load_config_override(config_path: str | None = None):
+        """Load a config override from YAML if provided, else None."""
         if config_path and os.path.exists(config_path):
-            cfg = OmegaConf.load(config_path)
-            return cfg
-        else:
-            # Create minimal default config for inference
-            cfg_dict = {
-                "model": {"batch_size": 32, "rda": False},
-                "dataset": {"P": 1000, "N": 1000},
-                "validations": {"diff_exp": {"top_k_rank": 50, "method": "wilcoxon"}},
-                "embeddings": {
-                    "current": "default",
-                    "default": {"all_embeddings": "path/to/embeddings.pt", "size": 5120},
-                },
-            }
-            return OmegaConf.create(cfg_dict)
+            return OmegaConf.load(config_path)
+        return None
 
     from ...emb.nn.model import StateEmbeddingModel
     from ...emb.utils import compute_gene_overlap_cross_pert, get_embedding_cfg, get_precision_config
@@ -58,17 +57,12 @@ def run_emb_eval(args):
     print(f"Control perturbation: {args.control_pert}")
 
     if args.config:
-        print(f"Loading config: {args.config}")
+        print(f"Using config override: {args.config}")
     else:
-        print("Using default config")
+        print("No config override provided; will use config embedded in checkpoint")
 
-    # Load configuration
-    cfg = load_config(args.config)
-
-    # Override batch size if provided
-    if args.batch_size:
-        cfg.model.batch_size = args.batch_size
-        print(f"Using batch size: {args.batch_size}")
+    # Load configuration override if given; otherwise let Inference load from the checkpoint
+    cfg = load_config_override(args.config)
 
     # Load AnnData
     adata = sc.read_h5ad(args.adata)
@@ -77,19 +71,26 @@ def run_emb_eval(args):
     # Create inference object and load model
     print("Creating inference object and loading model...")
 
-    # Try to load protein embeddings if config is available
+    # Resolve protein embeddings: explicit override -> use; else let Inference load from checkpoint/config
     protein_embeds = None
-    if args.config and os.path.exists(args.config):
+    if args.protein_embeddings:
         try:
-            embedding_file = os.path.join(os.path.dirname(args.checkpoint), "protein_embeddings.pt")
-            if os.path.exists(embedding_file):
-                protein_embeds = torch.load(embedding_file, weights_only=False, map_location="cpu")
-                print(f"Loaded protein embeddings from: {embedding_file}")
+            protein_embeds = torch.load(args.protein_embeddings, weights_only=False, map_location="cpu")
+            print(f"Using protein embeddings override: {args.protein_embeddings}")
         except Exception as e:
-            print(f"Warning: Could not load protein embeddings: {e}")
+            print(f"Error loading protein embeddings override: {e}")
+            raise
 
     inference = Inference(cfg=cfg, protein_embeds=protein_embeds)
-    inference.load_model(args.checkpoint)
+    inference.load_model(args.checkpoint)  # populates cfg from checkpoint if cfg was None
+    # Ensure cfg is set for downstream usage
+    cfg = inference.model.cfg if inference.model is not None else cfg
+    # Override batch size if provided
+    if args.batch_size and cfg is not None:
+        cfg.model.batch_size = args.batch_size
+        if inference.model is not None:
+            inference.model.update_config(cfg)
+        print(f"Using batch size: {args.batch_size}")
     adata = inference._convert_to_csr(adata)
 
     model = inference.model
