@@ -340,7 +340,7 @@ class StateEmbeddingModel(L.LightningModule):
 
         return gene_output, embedding, dataset_emb
 
-    def _log_nonzero_elements_stats(self, mask, prefix="trainer"):
+    def _log_nonzero_elements_stats(self, batch_sentences, prefix="trainer"):
         """
         Track and log non-zero elements in the sentence for ablation study.
         
@@ -349,23 +349,21 @@ class StateEmbeddingModel(L.LightningModule):
         for understanding how padding with unexpressed gene embeddings affects model learning.
         
         Args:
-            mask: Boolean tensor of shape (batch_size, seq_len) where True indicates
+            batch_sentences: Boolean tensor of shape (batch_size, seq_len) where True indicates
                   non-zero (expressed) genes and False indicates zero (unexpressed/padded) genes.
-                  The CLS token at position 0 is excluded from the count.
             prefix: String prefix for logging (e.g., "trainer" or "validation")
         
         Logs:
             - {prefix}/avg_nonzero_genes: Average number of non-zero genes per cell
             - {prefix}/nonzero_fraction: Fraction of non-zero genes relative to total slots
         """
+        bool_mask = batch_sentences.to(torch.bool)
         # Count non-zero elements per cell in the batch
-        # mask is True for non-zero (expressed) genes, False for zero (unexpressed/padded) genes
-        # We exclude the CLS token (position 0) from the count
-        nonzero_counts = mask[:, 1:].sum(dim=1)  # Sum across sequence dimension, excluding CLS token
-        avg_nonzero = nonzero_counts.float().mean()
+        nonzero_counts = bool_mask.sum(dim=1)  # Sum across sequence dimension
+        avg_nonzero = nonzero_counts.float().mean().item()
         
         # Calculate the fraction of non-zero elements (excluding CLS token)
-        total_slots = mask.shape[1] - 1  # Exclude CLS token
+        total_slots = batch_sentences.shape[1]
         nonzero_fraction = avg_nonzero / total_slots
         
         # Log the statistics
@@ -377,9 +375,9 @@ class StateEmbeddingModel(L.LightningModule):
         X, Y, batch_weights, embs, dataset_embs = self._compute_embedding_for_batch(batch)
 
         # Track non-zero elements in the sentence
-        mask = batch[5].to(self.device).bool()
+        batch_sentences = batch[7].to(self.device).bool()
         prefix = "trainer" if self.training else "validation"
-        self._log_nonzero_elements_stats(mask, prefix)
+        self._log_nonzero_elements_stats(batch_sentences, prefix)
 
         z = embs.unsqueeze(1).repeat(1, X.shape[1], 1)  # CLS token
 
