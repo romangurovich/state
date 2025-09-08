@@ -184,8 +184,8 @@ class TestCumulativeFLOPSCallback:
         assert cb._cumulative_flops == 5000
         assert cb._batch_count == 5
 
-    def test_cumulative_flops_validation_logging_cadence(self, fake_model, fake_batch):
-        """Test that cumulative FLOPs are logged at validation frequency."""
+    def test_cumulative_flops_batch_logging(self, fake_model, fake_batch):
+        """Test that cumulative FLOPs are logged after every training batch."""
         cb = CumulativeFLOPSCallback(use_backward=False)
         trainer = FakeTrainer(num_devices=1, current_epoch=0)
 
@@ -197,16 +197,17 @@ class TestCumulativeFLOPSCallback:
         for batch_idx in range(3):
             cb.on_train_batch_end(cast(Any, trainer), fake_model, outputs=None, batch=fake_batch, batch_idx=batch_idx)
 
-        # Should have cumulative FLOPs but not logged yet
+        # Should have cumulative FLOPs and logged after each batch
         assert cb._cumulative_flops == 1500
-        assert len([log for log in fake_model.logged if log["name"] == "cumulative_flops"]) == 0
 
-        # Trigger validation start (this is when logging should happen)
-        cb.on_validation_start(cast(Any, trainer), fake_model)
-
-        # Check that cumulative_flops was logged
+        # Check that cumulative_flops was logged 3 times (once per batch)
         cumulative_logs = [log for log in fake_model.logged if log["name"] == "cumulative_flops"]
-        assert len(cumulative_logs) == 1
-        assert cumulative_logs[0]["value"] == 1500.0
-        assert cumulative_logs[0]["on_step"] is False
-        assert cumulative_logs[0]["on_epoch"] is True
+        assert len(cumulative_logs) == 3
+        assert cumulative_logs[0]["value"] == 500.0  # After batch 0
+        assert cumulative_logs[1]["value"] == 1000.0  # After batch 1
+        assert cumulative_logs[2]["value"] == 1500.0  # After batch 2
+        
+        # Verify logging parameters
+        for log in cumulative_logs:
+            assert log["on_step"] is True
+            assert log["on_epoch"] is False
