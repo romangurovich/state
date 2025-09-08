@@ -32,7 +32,7 @@ class FakeModel(torch.nn.Module):
         y = self.forward(x)
         return y.sum()
 
-    def log(self, name, value, *, prog_bar=False, on_step=False, on_epoch=False):
+    def log(self, name, value, *, prog_bar=False, on_step=False, on_epoch=False, sync_dist=False):
         self.logged.append(
             {
                 "name": name,
@@ -40,6 +40,7 @@ class FakeModel(torch.nn.Module):
                 "prog_bar": prog_bar,
                 "on_step": on_step,
                 "on_epoch": on_epoch,
+                "sync_dist": sync_dist,
             }
         )
 
