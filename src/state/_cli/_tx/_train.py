@@ -26,8 +26,7 @@ def run_tx_train(cfg: DictConfig):
     from lightning.pytorch.loggers import WandbLogger
     from lightning.pytorch.plugins.precision import MixedPrecision
 
-    from ...tx.callbacks import BatchSpeedMonitorCallback
-    from ...tx.callbacks import ModelFLOPSUtilizationCallback
+    from ...tx.callbacks import BatchSpeedMonitorCallback, ModelFLOPSUtilizationCallback, CumulativeFLOPSCallback
     from ...tx.utils import get_checkpoint_callbacks, get_lightning_module, get_loggers
 
     logger = logging.getLogger(__name__)
@@ -216,6 +215,11 @@ def run_tx_train(cfg: DictConfig):
         )
 
         callbacks.append(mfu_cb)
+
+    # Add CumulativeFLOPSCallback to track cumulative FLOPs
+    cumulative_flops_use_backward = cfg["training"]["cumulative_flops_use_backward"]
+    cumulative_flops_cb = CumulativeFLOPSCallback(use_backward=cumulative_flops_use_backward)
+    callbacks.append(cumulative_flops_cb)
 
     logger.info("Loggers and callbacks set up.")
 
