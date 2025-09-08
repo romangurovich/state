@@ -13,11 +13,11 @@ logger.setLevel(logging.INFO)
 class CumulativeFLOPSCallback(Callback):
     """
     PyTorch Lightning callback to track cumulative FLOPS during training.
-    
+
     - Measures FLOPs once on the first training batch using `measure_flops`.
     - Tracks cumulative FLOPs and logs at validation frequency.
     - Logs cumulative_flops to trainer loggers (e.g., W&B, CSV) at validation cadence.
-    
+
     Args:
         use_backward: If True, include backward pass FLOPs in the measurement.
     """
@@ -29,7 +29,7 @@ class CumulativeFLOPSCallback(Callback):
     ) -> None:
         super().__init__()
         self.use_backward = use_backward
-        
+
         self._flops_per_batch: Optional[int] = None
         self._measured: bool = False
         self._cumulative_flops: int = 0
@@ -37,10 +37,10 @@ class CumulativeFLOPSCallback(Callback):
 
     def _trainstep_forward_backward(self, model: LightningModule, batch: Any) -> torch.Tensor:
         """Encapsulate calling StateTransitionPerturbationModel.training_step and backward.
-        
+
         This intentionally targets StateTransitionPerturbationModel's signature and
         performs both forward and backward to capture full FLOPs.
-        
+
         !!WARNING!!
         This has only been tested with StateTransitionPerturbationModel. Behavior with any other model has not been verified.
         """
@@ -61,7 +61,7 @@ class CumulativeFLOPSCallback(Callback):
 
         self._flops_per_batch = int(measure_flops(model, forward_fn=forward_fn))
         logger.info(f"CumulativeFLOPSCallback: Measured FLOPs per batch: {self._flops_per_batch}")
-        
+
         model.zero_grad(set_to_none=True)
         self._measured = True
 
@@ -72,7 +72,7 @@ class CumulativeFLOPSCallback(Callback):
     def on_train_batch_end(self, trainer: Trainer, pl_module: Any, outputs: Any, batch: dict, batch_idx: int) -> None:
         if self._flops_per_batch is None:
             return
-        
+
         self._batch_count += 1
         self._cumulative_flops += self._flops_per_batch
 
