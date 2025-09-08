@@ -86,6 +86,12 @@ embeddings:
     valid_genes_masks: /home/aadduri/state-diffusion/all_human_data_filtered/valid_genes_masks_all_data.torch
     size: 5120
     num: 19790
+  SE-167M:
+    all_embeddings: /home/aadduri/state/SE-167M-Data/all_embeddings_SE-167M.pt
+    ds_emb_mapping: /home/aadduri/state/SE-167M-Data/ds_emb_mapping_SE-167M.torch
+    valid_genes_masks: /home/aadduri/state/SE-167M-Data/valid_genes_masks_SE-167M.torch
+    size: 5120
+    num: 19790
 validations:
   diff_exp:
     enable: true
@@ -189,6 +195,12 @@ dataset:
     val: /home/aadduri/state-diffusion/all_human_data_filtered/val_all_data.csv
     filter: true
     num_datasets: 31195
+  SE-167M:
+    ds_type: h5ad
+    train: /home/aadduri/state/SE-167M-Data/train_SE-167M.csv
+    val: /home/aadduri/state/SE-167M-Data/val_SE-167M.csv
+    filter: true
+    num_datasets: 14418
 tokenizer:
   token_dim: 5120
 model:
