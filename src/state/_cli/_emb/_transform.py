@@ -19,7 +19,8 @@ def add_arguments_transform(parser: ap.ArgumentParser):
         "--protein-embeddings",
         required=False,
         help=(
-            "Path to protein embeddings override (.pt). If omitted, uses embeddings packaged in the checkpoint, or the path from config as fallback."
+            "Path to protein embeddings override (.pt). If omitted, the CLI will look for 'protein_embeddings.pt' in --model-folder, "
+            "then fall back to embeddings packaged in the checkpoint, and finally the path from the config."
         ),
     )
     parser.add_argument("--lancedb", type=str, help="Path to LanceDB database for vector storage")
@@ -61,10 +62,36 @@ def run_emb_transform(args: ap.ArgumentParser):
 
     # Create inference object
     logger.info("Creating inference object")
-    # Resolve protein embeddings: explicit override -> use; else let Inference load from checkpoint/config later
+    # Resolve protein embeddings in priority order:
+    # 1) Explicit --protein-embeddings
+    # 2) Auto-detect 'protein_embeddings.pt' in --model-folder
+    # 3) Let Inference load from checkpoint/config
     protein_embeds = None
     if args.protein_embeddings:
+        logger.info(f"Using protein embeddings override: {args.protein_embeddings}")
         protein_embeds = torch.load(args.protein_embeddings, weights_only=False, map_location="cpu")
+    else:
+        # Try auto-detect in model folder
+        try:
+            exact_path = os.path.join(args.model_folder, "protein_embeddings.pt")
+            cand_path = None
+            if os.path.exists(exact_path):
+                cand_path = exact_path
+            else:
+                # Consider other variations like protein_embeddings*.pt
+                pe_files = sorted(glob.glob(os.path.join(args.model_folder, "protein_embeddings*.pt")))
+                if pe_files:
+                    # Prefer the lexicographically last to mimic checkpoint selection behavior
+                    cand_path = pe_files[-1]
+            if cand_path is not None:
+                logger.info(
+                    f"Found protein embeddings in model folder: {cand_path}. Using these and overriding config."
+                )
+                protein_embeds = torch.load(cand_path, weights_only=False, map_location="cpu")
+        except Exception as e:
+            logger.warning(
+                f"Failed to load auto-detected protein embeddings: {e}. Will fall back to checkpoint/config."
+            )
 
     # Only use config override if explicitly provided; otherwise use config embedded in the checkpoint
     conf = OmegaConf.load(args.config) if args.config else None
