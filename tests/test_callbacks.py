@@ -3,6 +3,7 @@ import pytest
 
 from state.tx.callbacks import model_flops_utilization as mfu
 from state.tx.callbacks.model_flops_utilization import ModelFLOPSUtilizationCallback
+from state.tx.callbacks.cumulative_flops import CumulativeFLOPSCallback
 import torch
 
 
@@ -162,3 +163,49 @@ def test_mfu_is_calculated_correctly(fake_model, fake_batch):
 
     for sps_log in sps_logs:
         assert 2 <= sps_log["value"] <= 6
+
+
+class TestCumulativeFLOPSCallback:
+    def test_cumulative_flops_calculation_accuracy(self, fake_model, fake_batch):
+        """Test that cumulative FLOPs calculation is accurate."""
+        cb = CumulativeFLOPSCallback(use_backward=False)
+        trainer = FakeTrainer(num_devices=1, current_epoch=0)
+        
+        # Set known FLOPs per batch to avoid measurement
+        cb._measured = True
+        cb._flops_per_batch = 1000
+        
+        # Simulate 5 training batches
+        for batch_idx in range(5):
+            cb.on_train_batch_end(cast(Any, trainer), fake_model, outputs=None, batch=fake_batch, batch_idx=batch_idx)
+        
+        # Check cumulative FLOPs
+        assert cb._cumulative_flops == 5000
+        assert cb._batch_count == 5
+
+    def test_cumulative_flops_validation_logging_cadence(self, fake_model, fake_batch):
+        """Test that cumulative FLOPs are logged at validation frequency."""
+        cb = CumulativeFLOPSCallback(use_backward=False)
+        trainer = FakeTrainer(num_devices=1, current_epoch=0)
+        
+        # Set known FLOPs per batch
+        cb._measured = True
+        cb._flops_per_batch = 500
+        
+        # Simulate some training batches
+        for batch_idx in range(3):
+            cb.on_train_batch_end(cast(Any, trainer), fake_model, outputs=None, batch=fake_batch, batch_idx=batch_idx)
+        
+        # Should have cumulative FLOPs but not logged yet
+        assert cb._cumulative_flops == 1500
+        assert len([log for log in fake_model.logged if log["name"] == "cumulative_flops"]) == 0
+        
+        # Trigger validation start (this is when logging should happen)
+        cb.on_validation_start(cast(Any, trainer), fake_model)
+        
+        # Check that cumulative_flops was logged
+        cumulative_logs = [log for log in fake_model.logged if log["name"] == "cumulative_flops"]
+        assert len(cumulative_logs) == 1
+        assert cumulative_logs[0]["value"] == 1500.0
+        assert cumulative_logs[0]["on_step"] is False
+        assert cumulative_logs[0]["on_epoch"] is True
