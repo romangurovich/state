@@ -28,6 +28,15 @@ def add_arguments_transform(parser: ap.ArgumentParser):
         "--lancedb-update", action="store_true", help="Update existing entries in LanceDB (default: append)"
     )
     parser.add_argument("--lancedb-batch-size", type=int, default=1000, help="Batch size for LanceDB operations")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help=(
+            "Batch size for embedding forward pass (overrides config). "
+            "Increase to use more VRAM and speed up embedding."
+        ),
+    )
 
 
 def run_emb_transform(args: ap.ArgumentParser):
@@ -119,6 +128,7 @@ def run_emb_transform(args: ap.ArgumentParser):
         input_adata_path=args.input,
         output_adata_path=args.output,
         emb_key=args.embed_key,
+        batch_size=args.batch_size if getattr(args, "batch_size", None) is not None else None,
         lancedb_path=args.lancedb,
         update_lancedb=args.lancedb_update,
         lancedb_batch_size=args.lancedb_batch_size,

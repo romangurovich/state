@@ -26,7 +26,7 @@ def run_tx_train(cfg: DictConfig):
     from lightning.pytorch.loggers import WandbLogger
     from lightning.pytorch.plugins.precision import MixedPrecision
 
-    from ...tx.callbacks import BatchSpeedMonitorCallback, ModelFLOPSUtilizationCallback
+    from ...tx.callbacks import BatchSpeedMonitorCallback, ModelFLOPSUtilizationCallback, GradNormCallback
     from ...tx.utils import get_checkpoint_callbacks, get_lightning_module, get_loggers
 
     logger = logging.getLogger(__name__)
@@ -199,6 +199,10 @@ def run_tx_train(cfg: DictConfig):
     batch_speed_monitor = BatchSpeedMonitorCallback()
 
     callbacks = ckpt_callbacks + [batch_speed_monitor]
+
+    # Track gradient norm only for state transition model
+    if cfg["model"]["name"] == "state":
+        callbacks.append(GradNormCallback())
 
     # Add ModelFLOPSUtilizationCallback to track and log MFU. currently only works for state transition model
     if cfg["training"]["use_mfu"] and cfg["model"]["name"] == "state":
