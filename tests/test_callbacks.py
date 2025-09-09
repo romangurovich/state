@@ -206,7 +206,7 @@ class TestCumulativeFLOPSCallback:
         assert cumulative_logs[0]["value"] == 500.0  # After batch 0
         assert cumulative_logs[1]["value"] == 1000.0  # After batch 1
         assert cumulative_logs[2]["value"] == 1500.0  # After batch 2
-        
+
         # Verify logging parameters
         for log in cumulative_logs:
             assert log["on_step"] is True

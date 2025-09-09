@@ -75,7 +75,7 @@ class CumulativeFLOPSCallback(Callback):
 
         self._batch_count += 1
         self._cumulative_flops += self._flops_per_batch
-        
+
         # Log cumulative FLOPs after every training batch
         pl_module.log(
             "cumulative_flops",
@@ -90,7 +90,7 @@ class CumulativeFLOPSCallback(Callback):
     def on_validation_start(self, trainer: Trainer, pl_module: Any) -> None:
         if self._flops_per_batch is None:
             return
-        
+
         # Log cumulative FLOPs at validation frequency for W&B panel alignment
         pl_module.log(
             "cumulative_flops_val_sync",
