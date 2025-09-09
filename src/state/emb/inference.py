@@ -187,7 +187,7 @@ class Inference:
         output_adata_path: str | None = None,
         emb_key: str = "X_emb",
         dataset_name: str | None = None,
-        batch_size: int = 32,
+        batch_size: int | None = None,
         lancedb_path: str | None = None,
         update_lancedb: bool = False,
         lancedb_batch_size: int = 1000,
@@ -205,8 +205,27 @@ class Inference:
 
         device_type = "cuda" if torch.cuda.is_available() else "cpu"
         precision = get_precision_config(device_type=device_type)
+
+        # Allow overriding batch size for faster inference if more VRAM is available
+        dataloader_cfg = self._vci_conf
+        if batch_size is not None:
+            try:
+                dataloader_cfg = OmegaConf.create(OmegaConf.to_container(self._vci_conf, resolve=True))
+                # Ensure nested structure exists
+                if not hasattr(dataloader_cfg, "model"):
+                    dataloader_cfg["model"] = {}
+                dataloader_cfg.model.batch_size = int(batch_size)
+                log.info(f"Using override batch size: {batch_size}")
+            except Exception:
+                # Fallback: attempt direct set; if it fails, proceed with original config
+                try:
+                    dataloader_cfg.model.batch_size = int(batch_size)
+                    log.info(f"Using override batch size: {batch_size}")
+                except Exception:
+                    log.warning("Failed to override batch size; using config default")
+
         dataloader = create_dataloader(
-            self._vci_conf,
+            dataloader_cfg,
             adata=adata,
             adata_name=dataset_name or "inference",
             shape_dict=shape_dict,

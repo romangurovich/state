@@ -8,8 +8,8 @@ kwargs:
   hidden_dim: 696      # hidden dimension going into the transformer backbone
   loss: energy
   confidence_head: False
-  n_encoder_layers: 4
-  n_decoder_layers: 4
+  n_encoder_layers: 1
+  n_decoder_layers: 1
   predict_residual: True
   softplus: True
   freeze_pert: False
