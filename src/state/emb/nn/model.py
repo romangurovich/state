@@ -357,9 +357,8 @@ class StateEmbeddingModel(L.LightningModule):
             - {prefix}/avg_nonzero_genes: Average number of non-zero genes per cell
             - {prefix}/nonzero_fraction: Fraction of non-zero genes relative to total slots
         """
-        bool_mask = batch_sentences.to(torch.bool)
         # Count non-zero elements per cell in the batch
-        nonzero_counts = bool_mask.sum(dim=1)  # Sum across sequence dimension
+        nonzero_counts = batch_sentences.sum(dim=1)  # Sum across sequence dimension
         avg_nonzero = nonzero_counts.float().mean().item()
         
         # Calculate the fraction of non-zero elements (excluding CLS token)
