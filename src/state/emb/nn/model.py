@@ -340,9 +340,43 @@ class StateEmbeddingModel(L.LightningModule):
 
         return gene_output, embedding, dataset_emb
 
+    def _log_nonzero_elements_stats(self, batch_sentences, prefix="trainer"):
+        """
+        Track and log non-zero elements in the sentence for ablation study.
+        
+        This function analyzes the mask tensor to count how many positions in each cell sentence
+        contain expressed genes (non-zero) versus unexpressed/padded genes (zero). This is useful
+        for understanding how padding with unexpressed gene embeddings affects model learning.
+        
+        Args:
+            batch_sentences: Boolean tensor of shape (batch_size, seq_len) where True indicates
+                  non-zero (expressed) genes and False indicates zero (unexpressed/padded) genes.
+            prefix: String prefix for logging (e.g., "trainer" or "validation")
+        
+        Logs:
+            - {prefix}/avg_nonzero_genes: Average number of non-zero genes per cell
+            - {prefix}/nonzero_fraction: Fraction of non-zero genes relative to total slots
+        """
+        # Count non-zero elements per cell in the batch
+        nonzero_counts = batch_sentences.sum(dim=1)  # Sum across sequence dimension
+        avg_nonzero = nonzero_counts.float().mean().item()
+        
+        # Calculate the fraction of non-zero elements (excluding CLS token)
+        total_slots = batch_sentences.shape[1]
+        nonzero_fraction = avg_nonzero / total_slots
+        
+        # Log the statistics
+        self.log(f"{prefix}/avg_nonzero_genes", avg_nonzero)
+        self.log(f"{prefix}/nonzero_fraction", nonzero_fraction)
+
     def shared_step(self, batch, batch_idx):
         logging.info(f"Step {self.global_step} - Batch {batch_idx}")
         X, Y, batch_weights, embs, dataset_embs = self._compute_embedding_for_batch(batch)
+
+        # Track non-zero elements in the sentence
+        batch_sentences = batch[7].to(self.device).bool()
+        prefix = "trainer" if self.training else "validation"
+        self._log_nonzero_elements_stats(batch_sentences, prefix)
 
         z = embs.unsqueeze(1).repeat(1, X.shape[1], 1)  # CLS token
 
