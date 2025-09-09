@@ -182,7 +182,7 @@ class StateTransitionPerturbationModel(PerturbationModel):
         self.use_basal_projection = kwargs.get("use_basal_projection", True)
 
         # Build the underlying neural OT network
-        self._build_networks()
+        self._build_networks(lora_cfg=kwargs.get("lora", None))
 
         # Add an optional encoder that introduces a batch variable
         self.batch_encoder = None
@@ -258,10 +258,9 @@ class StateTransitionPerturbationModel(PerturbationModel):
                 genes=gene_names,
                 # latent_dim=self.output_dim + (self.batch_dim or 0),
             )
-
         print(self)
 
-    def _build_networks(self):
+    def _build_networks(self, lora_cfg=None):
         """
         Here we instantiate the actual GPT2-based model.
         """
@@ -293,7 +292,6 @@ class StateTransitionPerturbationModel(PerturbationModel):
         )
 
         # Optionally wrap backbone with LoRA adapters
-        lora_cfg = kwargs.get("lora", None)
         if lora_cfg and lora_cfg.get("enable", False):
             self.transformer_backbone = apply_lora(
                 self.transformer_backbone,
