@@ -86,3 +86,17 @@ class CumulativeFLOPSCallback(Callback):
             sync_dist=True,
         )
         logger.info(f"CumulativeFLOPSCallback: Logged cumulative FLOPs: {self._cumulative_flops}")
+
+    def on_validation_start(self, trainer: Trainer, pl_module: Any) -> None:
+        if self._flops_per_batch is None:
+            return
+        
+        # Log cumulative FLOPs at validation frequency for W&B panel alignment
+        pl_module.log(
+            "cumulative_flops_val_sync",
+            float(self._cumulative_flops),
+            prog_bar=False,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+        )
