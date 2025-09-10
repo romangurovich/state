@@ -3,6 +3,7 @@ experiment:
   local: local
   compiled: false
   deaware: false
+  cumulative_flops_use_backward: true
   profile:
     enable_profiler: false
     profile_steps:
