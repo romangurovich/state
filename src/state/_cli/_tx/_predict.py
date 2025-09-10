@@ -46,6 +46,12 @@ def add_arguments_predict(parser: ap.ArgumentParser):
         help=("If set, restrict predictions/evaluation to perturbations shared between train and test (train ∩ test)."),
     )
 
+    parser.add_argument(
+        "--eval-train-data",
+        action="store_true",
+        help="If set, evaluate the model on the training data rather than on the test data.",
+    )
+
 
 def run_tx_predict(args: ap.ArgumentParser):
     import logging
@@ -191,7 +197,11 @@ def run_tx_predict(args: ap.ArgumentParser):
     data_module.batch_size = 1
     if args.test_time_finetune > 0:
         control_pert = data_module.get_control_pert()
-        test_loader = data_module.test_dataloader()
+        if args.eval_train_data:
+            test_loader = data_module.train_dataloader(test=True)
+        else:
+            test_loader = data_module.test_dataloader()
+
         run_test_time_finetune(
             model, test_loader, args.test_time_finetune, control_pert, device=next(model.parameters()).device
         )
@@ -199,7 +209,10 @@ def run_tx_predict(args: ap.ArgumentParser):
 
     # 5. Run inference on test set
     data_module.setup(stage="test")
-    test_loader = data_module.test_dataloader()
+    if args.eval_train_data:
+        test_loader = data_module.train_dataloader(test=True)
+    else:
+        test_loader = data_module.test_dataloader()
 
     if test_loader is None:
         logger.warning("No test dataloader found. Exiting.")
