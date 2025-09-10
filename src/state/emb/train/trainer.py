@@ -12,7 +12,14 @@ from lightning.pytorch.strategies import DDPStrategy
 
 from ..nn.model import StateEmbeddingModel
 from ..data import H5adSentenceDataset, VCIDatasetSentenceCollator
-from ..train.callbacks import LogLR, ProfilerCallback, ResumeCallback, EMACallback, PerfProfilerCallback, CumulativeFLOPSCallback
+from ..train.callbacks import (
+    LogLR,
+    ProfilerCallback,
+    ResumeCallback,
+    EMACallback,
+    PerfProfilerCallback,
+    CumulativeFLOPSCallback,
+)
 from ..utils import get_latest_checkpoint, get_embedding_cfg, get_dataset_cfg
 
 
