@@ -26,9 +26,14 @@ def run_tx_train(cfg: DictConfig):
     from lightning.pytorch.loggers import WandbLogger
     from lightning.pytorch.plugins.precision import MixedPrecision
 
-    from ...tx.callbacks import BatchSpeedMonitorCallback, CumulativeFLOPSCallback, GradNormCallback, ModelFLOPSUtilizationCallback
+    from ...tx.callbacks import (
+        BatchSpeedMonitorCallback,
+        CumulativeFLOPSCallback,
+        GradNormCallback,
+        ModelFLOPSUtilizationCallback,
+    )
     from ...tx.utils import get_checkpoint_callbacks, get_lightning_module, get_loggers
-    
+
     logger = logging.getLogger(__name__)
     torch.set_float32_matmul_precision("medium")
 
