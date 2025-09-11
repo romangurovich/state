@@ -355,6 +355,8 @@ def run_tx_train(cfg: DictConfig):
                     dropout=model.dropout,
                     activation=model.activation_class,
                 )
+            else:
+                print("WARNING: pert_encoder will not be rebuilt since input dimension matches")
 
         # Filter out mismatched size parameters
         filtered_state = {}

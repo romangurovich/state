@@ -4,6 +4,14 @@ import torch
 import torch.nn as nn
 from transformers import GPT2Config, GPT2Model, LlamaConfig, LlamaModel, PreTrainedModel
 
+# LoRA / PEFT
+try:
+    from peft import LoraConfig, get_peft_model, TaskType  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    LoraConfig = None  # type: ignore
+    get_peft_model = None  # type: ignore
+    TaskType = None  # type: ignore
+
 
 def build_mlp(
     in_dim: int,
@@ -113,6 +121,72 @@ def get_transformer_backbone(key, kwargs) -> PreTrainedModel:
         raise ValueError(f"Unknown backbone key {key}")
 
     return model, model_dim
+
+
+# -------------------------------
+# LoRA utilities
+# -------------------------------
+def _default_lora_targets(backbone_key: str, adapt_mlp: bool) -> list[str]:
+    """
+    Choose target module names for LoRA injection based on backbone type.
+    """
+    k = backbone_key.lower()
+    if k == "llama":
+        targets = ["q_proj", "k_proj", "v_proj", "o_proj"]
+        if adapt_mlp:
+            targets += ["gate_proj", "up_proj", "down_proj"]
+        return targets
+    if k == "gpt2":
+        targets = ["c_attn", "c_proj"]
+        if adapt_mlp:
+            targets += ["mlp.c_fc", "mlp.c_proj"]
+        return targets
+    raise ValueError(f"Unsupported backbone for LoRA: {backbone_key}")
+
+
+def apply_lora(model: PreTrainedModel, backbone_key: str, lora_cfg: dict | None) -> PreTrainedModel:
+    """
+    Apply LoRA adapters to a HuggingFace transformer model when enabled.
+    If PEFT is unavailable or config is disabled, returns the original model.
+    """
+    if not lora_cfg or not lora_cfg.get("enable", False):
+        return model
+
+    if LoraConfig is None or get_peft_model is None:
+        raise ImportError(
+            "peft is not installed but `lora.enable` is True. Add `peft` to dependencies."
+        )
+
+    target = lora_cfg.get("target", "auto")
+    adapt_mlp = bool(lora_cfg.get("adapt_mlp", False))
+    target_modules = (
+        lora_cfg.get("target_modules")
+        if target != "auto"
+        else _default_lora_targets(backbone_key, adapt_mlp)
+    )
+
+    # Build PEFT LoRA config
+    task_type_key = lora_cfg.get("task_type", "FEATURE_EXTRACTION")
+    task_type = TaskType[task_type_key] if isinstance(task_type_key, str) else task_type_key
+
+    config = LoraConfig(
+        r=int(lora_cfg.get("r", 16)),
+        lora_alpha=int(lora_cfg.get("alpha", 32)),
+        lora_dropout=float(lora_cfg.get("dropout", 0.0)),
+        bias=lora_cfg.get("bias", "none"),
+        target_modules=target_modules,
+        task_type=task_type,
+    )
+
+    peft_model = get_peft_model(model, config)
+
+    # Optional: print trainable params summary if available
+    try:
+        peft_model.print_trainable_parameters()
+    except Exception:
+        pass
+
+    return peft_model
 
 
 class NoRoPE(nn.Module):
