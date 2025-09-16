@@ -53,9 +53,7 @@ def run_emb_preprocess(args):
     import sys
     import pandas as pd
     import torch
-    from omegaconf import OmegaConf
     from tqdm import tqdm
-    import h5py as h5
 
     log = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")

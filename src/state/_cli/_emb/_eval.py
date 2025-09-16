@@ -30,15 +30,12 @@ def run_emb_eval(args):
     """
     Run embedding evaluation.
     """
-    import os
-    import yaml
     import scanpy as sc
     import pandas as pd
     import numpy as np
     import torch
-    from pathlib import Path
     from tqdm import tqdm
-    from omegaconf import OmegaConf, DictConfig
+    from omegaconf import OmegaConf
 
     def load_config_override(config_path: str | None = None):
         """Load a config override from YAML if provided, else None."""
@@ -46,8 +43,7 @@ def run_emb_eval(args):
             return OmegaConf.load(config_path)
         return None
 
-    from ...emb.nn.model import StateEmbeddingModel
-    from ...emb.utils import compute_gene_overlap_cross_pert, get_embedding_cfg, get_precision_config
+    from ...emb.utils import compute_gene_overlap_cross_pert, get_precision_config
     from ...emb.data import create_dataloader
     from ...emb.inference import Inference
 
@@ -293,7 +289,7 @@ def run_emb_eval(args):
 
     # Print overlap results
     mean_overlap = np.array(list(de_metrics.values())).mean()
-    print(f"\nOverlap Results:")
+    print("\nOverlap Results:")
     print(f"Mean gene overlap: {mean_overlap:.4f}")
     print(f"Number of perturbations evaluated: {len(de_metrics)}")
 

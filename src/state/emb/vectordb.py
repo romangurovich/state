@@ -2,7 +2,6 @@ import lancedb
 import numpy as np
 import pandas as pd
 from typing import Optional, List
-from pathlib import Path
 
 
 class StateVectorDB:
