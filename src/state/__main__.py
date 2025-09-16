@@ -64,21 +64,20 @@ def show_hydra_help(method: str):
     print()
     print("Usage examples:")
     print("  Override single parameter:")
-    print(f"    uv run state tx train data.batch_size=64")
+    print("    uv run state tx train data.batch_size=64")
     print()
     print("  Override nested parameter:")
-    print(f"    uv run state tx train model.kwargs.hidden_dim=512")
+    print("    uv run state tx train model.kwargs.hidden_dim=512")
     print()
     print("  Override multiple parameters:")
-    print(f"    uv run state tx train data.batch_size=64 training.lr=0.001")
+    print("    uv run state tx train data.batch_size=64 training.lr=0.001")
     print()
     print("  Change config group:")
-    print(f"    uv run state tx train data=custom_data model=custom_model")
+    print("    uv run state tx train data=custom_data model=custom_model")
     print()
     print("Available config groups:")
 
     # Show available config groups
-    import os
     from pathlib import Path
 
     config_dir = Path(__file__).parent / "configs"

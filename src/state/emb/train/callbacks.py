@@ -1,13 +1,10 @@
 import time
 import logging
-import os
-import shutil
 from typing import Any, Optional
 
 import torch
 import lightning as L
 from lightning.fabric.utilities.throughput import measure_flops
-from omegaconf import OmegaConf
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

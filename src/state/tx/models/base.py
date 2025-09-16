@@ -231,7 +231,7 @@ class PerturbationModel(ABC, LightningModule):
                 if (self.embed_key and self.embed_key != "X_hvg" and self.output_space == "gene") or (
                     self.embed_key and self.output_space == "all"
                 ):  # we should be able to decode from hvg to all
-                    logger.info(f"DEBUG: Creating gene_decoder, checking conditions...")
+                    logger.info("DEBUG: Creating gene_decoder, checking conditions...")
                     if gene_dim > 10000:
                         hidden_dims = [1024, 512, 256]
                     else:
