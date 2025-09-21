@@ -25,6 +25,13 @@ from .stochastic_loader import StochasticDataLoader
 from .resource_loader import ResourceDataLoader
 from .multiscale_loader import MultiScaleDataLoader
 from .full_virtual_cell_loader import FullVirtualCellLoader
+from .cumulative import (
+    HierarchicalTemporalLoader,
+    HierarchicalRegulatoryLoader,
+    TemporalMemoryLoader,
+    StochasticResourceLoader,
+    FullVirtualCellLoader as CumulativeFullVirtualCellLoader
+)
 
 __all__ = [
     "BaseEnhancedLoader",
@@ -35,5 +42,10 @@ __all__ = [
     "StochasticDataLoader",
     "ResourceDataLoader",
     "MultiScaleDataLoader",
-    "FullVirtualCellLoader"
+    "FullVirtualCellLoader",
+    "HierarchicalTemporalLoader",
+    "HierarchicalRegulatoryLoader",
+    "TemporalMemoryLoader",
+    "StochasticResourceLoader",
+    "CumulativeFullVirtualCellLoader"
 ]
